@@ -1,1 +1,1 @@
-Working doc: https://www.notion.so/lennyt/Smart-Components-Examples-15c126622d894cf88ed9f7647a16daf7
+Working doc: https://lennyt.notion.site/Smart-Components-Examples-3f94c9257cf34b54acc1751cb9f5945d
