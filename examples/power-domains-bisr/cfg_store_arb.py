@@ -36,7 +36,10 @@ class ConfigStoreArbiter(m.Circuit):
     state.I @= state.O ^ 1
 
     # TODO: Mux of readyvalid array
-    curr_req = m.Consumer(m.ReadyValid[ConfigReq])()
+    curr_req = m.ReadyValid[ConfigReq]()
+    io.config_tx_out[0].data @= curr_req.data
+    io.config_tx_out[0].valid @= curr_req.valid
+    curr_req.ready @= io.config_tx_out[0].ready
     curr_req.valid @= m.mux([
         io.config_tx_in[0][0].valid,
         io.config_tx_in[1][0].valid
@@ -76,7 +79,7 @@ class ConfigStoreArbiter(m.Circuit):
     read_resp_tx = io.config_tx_out[1].ready.value() & io.config_tx_out[1].valid
 
     read_state = m.Register(READ_STATE)()
-    read_state = m.mux([
+    read_state.I @= m.mux([
         m.mux([READ_STATE.IDLE, READ_STATE.WAIT], read_req_tx),
         m.mux([READ_STATE.WAIT, READ_STATE.IDLE], read_resp_tx)
     ], read_state.O == READ_STATE.WAIT)
@@ -90,4 +93,3 @@ class ConfigStoreArbiter(m.Circuit):
 
 if __name__ == "__main__":
     m.compile("build/ConfigStoreArbiter", ConfigStoreArbiter)
-
