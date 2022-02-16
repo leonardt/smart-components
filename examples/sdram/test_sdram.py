@@ -4,7 +4,7 @@ import magma as m
 import hwtypes as hw
 from main import InitMem
 
-@pytest.mark.parametrize('init_sequece',
+@pytest.mark.parametrize('init_sequence',
         [
             (
                 m.generator.ParamDict(WE=hw.Bit(0), RE=hw.Bit(0)),
@@ -19,12 +19,12 @@ from main import InitMem
             ),
        ]
     )
-def test_mem(init_sequece):
+def test_mem(init_sequence):
     TestMem = InitMem(
         16,
         m.Bits[32],
         1,
-        init_sequece,
+        init_sequence,
         True
     )
 
@@ -33,7 +33,7 @@ def test_mem(init_sequece):
     assert hasattr(State, 'SLEEP')
     assert hasattr(State, 'READY')
 
-    N = len(init_sequece)
+    N = len(init_sequence)
 
     for i in range(1, N):
         assert hasattr(State, f'BOOT_{i}')
@@ -45,7 +45,7 @@ def test_mem(init_sequece):
 
 
     def _set_signals(idx):
-        for port, value in init_sequece[idx].items():
+        for port, value in init_sequence[idx].items():
             setattr(tester.circuit, port, value)
 
     _set_signals(0)

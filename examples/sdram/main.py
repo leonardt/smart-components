@@ -9,7 +9,7 @@ class InitMem(m.Generator2):
             height,
             T,
             read_latency,
-            init_sequece,
+            init_sequence,
             debug=False,
             ):
 
@@ -23,10 +23,10 @@ class InitMem(m.Generator2):
             RE=m.In(m.Enable),
         ) + m.ClockIO()
 
-        if not init_sequece:
-            raise ValueError('init_sequece must not be empty')
+        if not init_sequence:
+            raise ValueError('init_sequence must not be empty')
 
-        N = len(init_sequece)
+        N = len(init_sequence)
 
         class State(m.Enum):
             SLEEP = 0
@@ -63,7 +63,7 @@ class InitMem(m.Generator2):
         def _test_state(idx):
             tests = []
 
-            for port, value in init_sequece[idx].items():
+            for port, value in init_sequence[idx].items():
                 tests.append(getattr(self.io, port) == value)
 
             return ft.reduce(m.Bit.__and__, tests, m.Bit(1))
