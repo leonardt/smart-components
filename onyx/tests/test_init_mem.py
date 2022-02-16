@@ -2,7 +2,7 @@ import pytest
 import fault
 import magma as m
 import hwtypes as hw
-from main import InitMem
+from onyx_sram_subsystem.init_mem import InitMem
 
 @pytest.mark.parametrize('init_sequence',
         [
