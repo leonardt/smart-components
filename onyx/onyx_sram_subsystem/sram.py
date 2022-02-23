@@ -31,29 +31,29 @@ class SRAM(m.Generator2):
         mem.RADDR @= self.io.ADDR
         self.io.RDATA @= mem.RDATA
 
-        mem.RE @= self.io.RE
-        mem.WE @= self.io.WE
-
         # TODO: This would make a nice coroutine generator
         state = m.Register(m.Bits[8])()
 
         @m.inline_combinational()
         def controller():
             state.I @= state.O
+            mem.RE @= self.io.RE
+            mem.WE @= self.io.WE
             # TODO: comparison to Enum (magma or python) fails, likely an env
             # issue?
             # if self.io.command == SRAM.CMD.INIT:
             if self.io.command == 1:
                 state.I @= 1
+            # TODO: Off-by-one in init mem logic?
+            # elif state.O == 1:
+            #     mem.WE @= init_seq[0]["WE"]
+            #     mem.RE @= init_seq[0]["RE"]
+            #     state.I @= 2
             elif state.O == 1:
-                mem.WE @= init_seq[0]["WE"]
-                mem.RE @= init_seq[0]["RE"]
-                state.I @= 2
-            elif state.O == 2:
                 mem.WE @= init_seq[1]["WE"]
                 mem.RE @= init_seq[1]["RE"]
-                state.I @= 3
-            elif state.O == 3:
+                state.I @= 2
+            elif state.O == 2:
                 mem.WE @= init_seq[2]["WE"]
                 mem.RE @= init_seq[2]["RE"]
                 state.I @= 0
