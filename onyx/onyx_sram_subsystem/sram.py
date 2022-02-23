@@ -16,6 +16,7 @@ class SRAM(m.Generator2):
             WDATA=m.In(T),
             RDATA=m.Out(T),
             command=m.In(m.Bits[8])
+            # TODO: Add command enable
         ) + m.ClockIO()
 
         init_seq = (
