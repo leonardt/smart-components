@@ -56,5 +56,5 @@ def test_double():
     tester.compile_and_run("verilator", flags=["-Wno-fatal"])
 
 def test_stateful():
-    Stateful = SRAMStateful(4, 8, False, debug=True)
-
+    Stateful = SRAMStateful(4, 8, False, debug=False)
+    m.compile('build/test_stateful',  Stateful)

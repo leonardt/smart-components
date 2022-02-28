@@ -287,9 +287,11 @@ class SRAMStateful(SRAMDouble):
 
     def _write(self, addr, data):
         inputs = [
-            data[i:i+self.col_width]
+            data[i*self.col_width:(i+1)*self.col_width]
             for i in range(self.num_cols)
         ]
+
+        assert all(isinstance(x, m.Bits[self.col_width]) for x in inputs)
 
         shift = m.Bit(0)
         for i, mem in enumerate(self.cols):
@@ -314,9 +316,9 @@ class SRAMStateful(SRAMDouble):
             elif i < self.num_cols:
                 shift |= self.mask_reg.O[i]
                 mem.WDATA @= shift.ite(
-                    data[i-1],
-                    data[i]
+                    inputs[i-1],
+                    inputs[i]
                 )
             else:
                 # there is no "current"
-                mem.WDATA @= data[i-1]
+                mem.WDATA @= inputs[i-1]
