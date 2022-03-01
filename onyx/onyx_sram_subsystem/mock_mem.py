@@ -180,6 +180,12 @@ class SRAMStateful(SRAMDouble):
             self.mask_reg.I @= mask_in
             self.mask_reg.CE @= mask_en
 
+        if debug:
+            self.io.current_state @= self.current_state
+            self.io.mask @= self.mask_reg.O
+            self.io.next_state @= state.I.value()
+
+
     def _init_attrs(self,
             addr_width: int,
             data_width: int,
@@ -209,7 +215,7 @@ class SRAMStateful(SRAMDouble):
         self.mask_reg = m.Register(
             T=m.Bits[self.num_cols],
             has_enable=True
-        )
+        )()
 
     def _init_io(self):
         super()._init_io()
@@ -219,10 +225,9 @@ class SRAMStateful(SRAMDouble):
         if self.debug:
             self.io += m.IO(
                 current_state = m.Out(type(self).State),
+                next_state = m.Out(type(self).State),
                 mask = m.Out(m.Bits[self.num_cols])
             )
-            self.io.current_state @= self.current_state
-            self.io.mask @= self.mask_reg.O
 
 
     @property
