@@ -76,8 +76,7 @@ def test_stateful():
         tester.circuit.WDATA = mask
         tester.step(2)
         tester.circuit.current_state.expect(State.READY)
-        # Failing for unkown reasons
-        # tester.circuit.mask.expect(mask[:2])
+        tester.circuit.mask.expect(mask[:2])
 
         for i in range(1<<4):
             tester.circuit.CEn = hw.Bit(0)

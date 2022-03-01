@@ -169,7 +169,7 @@ class SRAMStateful(SRAMDouble):
                     next_state = State.READY
                     # TODO: validate mask?
                     mask_in = self.io.WDATA[:self.num_cols]
-                    mesk_en = m.Bit(1)
+                    mask_en = m.Bit(1)
                 else:
                     # cmd == CMD.NOP
                     next_state = State.BOOT
@@ -183,7 +183,6 @@ class SRAMStateful(SRAMDouble):
         if debug:
             self.io.current_state @= self.current_state
             self.io.mask @= self.mask_reg.O
-            self.io.next_state @= state.I.value()
 
 
     def _init_attrs(self,
@@ -226,7 +225,7 @@ class SRAMStateful(SRAMDouble):
             self.io += m.IO(
                 current_state = m.Out(type(self).State),
                 next_state = m.Out(type(self).State),
-                mask = m.Out(m.Bits[self.num_cols])
+                mask = m.Out(m.Bits[self.num_cols]),
             )
 
 
