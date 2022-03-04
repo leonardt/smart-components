@@ -224,7 +224,6 @@ class SRAMStateful(SRAMDouble):
         if self.debug:
             self.io += m.IO(
                 current_state = m.Out(type(self).State),
-                next_state = m.Out(type(self).State),
                 mask = m.Out(m.Bits[self.num_cols]),
             )
 
