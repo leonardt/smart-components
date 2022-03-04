@@ -15,8 +15,8 @@ class SRAMBase(m.Generator2):
             ):
         self._init_attrs(addr_width, data_width, has_byte_enable, *args, **kwargs)
         self._init_io()
-        self._instance_mem()
-
+        self._instance_subcomponents()
+        self._connect()
 
     def _init_attrs(self,
             addr_width: int,
@@ -55,13 +55,15 @@ class SRAMBase(m.Generator2):
                 WBEn = m.Bits[data_width/8]
             )
 
-    def _instance_mem(self):
+    def _instance_subcomponents(self):
         self.memory = m.Memory(
             1 << self.addr_width,
             m.Bits[self.data_width],
             read_latency=READ_LATENCY,
             has_read_enable=True
         )()
+
+    def _connect(self): pass
 
     def _read(self, addr):
         self.memory.RE @= self.re
@@ -87,46 +89,30 @@ class SRAMBase(m.Generator2):
 
 
 class SRAMSingle(SRAMBase):
-    def __init__(self,
-            addr_width: int,
-            data_width: int,
-            has_byte_enable: bool,
-            *args,
-            **kwargs,
-            ):
-
-        super().__init__(addr_width, data_width, has_byte_enable, *args, **kwargs)
-
-        self.io.RDATA @= self._read(self.io.ADDR)
-        self._write(self.io.ADDR, self.io.WDATA)
-
     def _init_io(self):
         super()._init_io()
         self.io += m.IO(
             ADDR = m.In(m.Bits[self.addr_width]),
         )
 
+    def _connect(self):
+        super()._connect()
+        self.io.RDATA @= self._read(self.io.ADDR)
+        self._write(self.io.ADDR, self.io.WDATA)
+
 
 class SRAMDouble(SRAMBase):
-    def __init__(self,
-            addr_width: int,
-            data_width: int,
-            has_byte_enable: bool,
-            *args,
-            **kwargs,
-            ):
-
-        super().__init__(addr_width, data_width, has_byte_enable, *args, **kwargs)
-
-        self.io.RDATA @= self._read(self.io.RADDR)
-        self._write(self.io.WADDR, self.io.WDATA)
-
     def _init_io(self):
         super()._init_io()
         self.io += m.IO(
             WADDR = m.In(m.Bits[self.addr_width]),
             RADDR = m.In(m.Bits[self.addr_width]),
         )
+
+    def _connect(self):
+        super()._connect()
+        self.io.RDATA @= self._read(self.io.RADDR)
+        self._write(self.io.WADDR, self.io.WDATA)
 
 
 class SRAMStateful(SRAMDouble):
@@ -150,11 +136,74 @@ class SRAMStateful(SRAMDouble):
             ):
 
         super().__init__(addr_width, data_width, has_byte_enable, col_width, debug, *args, **kwargs)
+
+    def _init_attrs(self,
+            addr_width: int,
+            data_width: int,
+            has_byte_enable: bool,
+            col_width: int,
+            debug: bool,
+            *args,
+            **kwargs
+            ):
+        super()._init_attrs(
+                addr_width,
+                data_width,
+                has_byte_enable,
+                *args,
+                **kwargs)
+
+        if col_width <= 0:
+            raise ValueError()
+
+        if data_width % col_width != 0:
+            raise ValueError()
+
+        self.col_width = col_width
+        self.debug = debug
+
+    def _init_io(self):
+        super()._init_io()
+        self.io += m.IO(
+            cmd = m.In(type(self).CMD)
+        )
+        if self.debug:
+            self.io += m.IO(
+                current_state = m.Out(type(self).State),
+                mask = m.Out(m.Bits[self.num_cols]),
+            )
+
+    @property
+    def ce(self):
+        return super().ce & (self.state.O == type(self).State.READY)
+
+    @property
+    def num_cols(self):
+        return self.data_width//self.col_width
+
+    def _instance_subcomponents(self):
+        self.cols = [
+            m.Memory(
+                1 << self.addr_width,
+                m.Bits[self.col_width],
+                read_latency=READ_LATENCY,
+                has_read_enable=True
+                )()
+            for _ in range(self.num_cols + 1) # + 1 for redundancy
+        ]
+        self.state = m.Register(init=type(self).State.SLEEP)()
+        self.mask_reg = m.Register(
+            T=m.Bits[self.num_cols],
+            has_enable=True
+        )()
+
+    def _connect(self):
+        super()._connect()
         # set up some aliases
         State = type(self).State
         CMD = type(self).CMD
         state = self.state
-        current_state = self.current_state
+        current_state = state.O
 
         @m.inline_combinational()
         def controller():
@@ -180,72 +229,9 @@ class SRAMStateful(SRAMDouble):
             self.mask_reg.I @= mask_in
             self.mask_reg.CE @= mask_en
 
-        if debug:
-            self.io.current_state @= self.current_state
-            self.io.mask @= self.mask_reg.O
-
-
-    def _init_attrs(self,
-            addr_width: int,
-            data_width: int,
-            has_byte_enable: bool,
-            col_width: int,
-            debug: bool,
-            *args,
-            **kwargs
-            ):
-        super()._init_attrs(
-                addr_width,
-                data_width,
-                has_byte_enable,
-                *args,
-                **kwargs)
-
-        if col_width <= 0:
-            raise ValueError()
-
-        if data_width % col_width != 0:
-            raise ValueError()
-
-        self.state = m.Register(init=type(self).State.SLEEP)()
-        self.current_state = self.state.O
-        self.col_width = col_width
-        self.debug = debug
-        self.mask_reg = m.Register(
-            T=m.Bits[self.num_cols],
-            has_enable=True
-        )()
-
-    def _init_io(self):
-        super()._init_io()
-        self.io += m.IO(
-            cmd = m.In(type(self).CMD)
-        )
         if self.debug:
-            self.io += m.IO(
-                current_state = m.Out(type(self).State),
-                mask = m.Out(m.Bits[self.num_cols]),
-            )
-
-
-    @property
-    def ce(self):
-        return super().ce & (self.current_state == type(self).State.READY)
-
-    @property
-    def num_cols(self):
-        return self.data_width//self.col_width
-
-    def _instance_mem(self):
-        self.cols = [
-            m.Memory(
-                1 << self.addr_width,
-                m.Bits[self.col_width],
-                read_latency=READ_LATENCY,
-                has_read_enable=True
-                )()
-            for _ in range(self.num_cols + 1) # + 1 for redundancy
-        ]
+            self.io.current_state @= current_state
+            self.io.mask @= self.mask_reg.O
 
     def _read(self, addr):
         outputs = []
