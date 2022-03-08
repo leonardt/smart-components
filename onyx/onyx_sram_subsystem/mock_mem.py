@@ -2,14 +2,14 @@ import magma as m
 
 # I am not making the read latency a generator param
 # as it is not parameter of Chisel provided by Gedeon
-READ_LATENCY: int = 1
+READ_LATENCY: int = 0
 
 class SRAMBase(m.Generator2):
     # *args, **kwargs for inheritance reasons
     def __init__(self,
             addr_width: int,
             data_width: int,
-            has_byte_enable: bool,
+            has_byte_enable: bool = False,
             *args,
             **kwargs,
             ):
@@ -60,13 +60,12 @@ class SRAMBase(m.Generator2):
             1 << self.addr_width,
             m.Bits[self.data_width],
             read_latency=READ_LATENCY,
-            has_read_enable=True
+            has_read_enable=False
         )()
 
     def _connect(self): pass
 
     def _read(self, addr):
-        self.memory.RE @= self.re
         self.memory.RADDR @= addr
         return self.memory.RDATA
 
@@ -115,6 +114,284 @@ class SRAMDouble(SRAMBase):
         self._write(self.io.WADDR, self.io.WDATA)
 
 
+def _binary_to_unary(data: m.Bits):
+    out_size = 1 << data.size
+    return m.Bits[out_size](1) << data.zext(out_size - data.size)
+
+
+def _tree_reduce(f, lst):
+    n = len(lst)
+    if n == 1:
+        return lst[0]
+    elif n == 2:
+        return f(*lst)
+    else:
+        assert n >= 3
+        return f(
+                _tree_reduce(f, lst[:n//2]),
+                _tree_reduce(f, lst[n//2:])
+        )
+
+
+class SRAMRedundancyMixin:
+    def __init__(self,
+            addr_width: int,
+            data_width: int,
+            has_byte_enable: bool = False,
+            col_width: int = 4,
+            num_r_cols: int = 1,
+            debug: bool = False,
+            *args,
+            **kwargs,
+            ):
+        super().__init__(
+                addr_width, data_width, has_byte_enable, col_width, num_r_cols, debug, *args, **kwargs)
+
+    def _init_attrs(self,
+            addr_width: int,
+            data_width: int,
+            has_byte_enable: bool,
+            col_width: int,
+            num_r_cols: int,
+            debug: bool,
+            *args,
+            **kwargs
+            ):
+        super()._init_attrs(
+                addr_width,
+                data_width,
+                has_byte_enable,
+                debug,
+                *args,
+                **kwargs)
+
+        if col_width <= 0:
+            raise ValueError()
+
+        if data_width % col_width != 0:
+            raise ValueError()
+
+        if num_r_cols != 1:
+            raise NotImplementedError()
+
+        self.col_width = col_width
+        self.num_r_cols = num_r_cols
+        self.debug = debug
+
+    @property
+    def num_v_cols(self):
+        return self.data_width//self.col_width
+
+    @property
+    def num_p_cols(self):
+        return self.num_v_cols + self.num_r_cols
+
+    def _init_io(self):
+        super()._init_io()
+        self.io += m.IO(
+            RCE = m.In(m.Bits[self.num_r_cols]),
+            **{
+                f'RCF{i}A' : m.In(m.Bits[m.bitutils.clog2safe(self.num_v_cols)])
+                for i in range(self.num_r_cols)
+            }
+        )
+
+    def _instance_subcomponents(self):
+        self.cols = [
+            m.Memory(
+                1 << self.addr_width,
+                m.Bits[self.col_width],
+                read_latency=READ_LATENCY,
+                has_read_enable=False,
+                )()
+            for _ in range(self.num_p_cols)
+        ]
+
+        mask_t = m.Bits[self.num_v_cols]
+        zero = mask_t(0)
+        RCFs = [
+            self.io.RCE[i].ite(_binary_to_unary(getattr(self.io, f'RCF{i}A')), zero)
+            for i in range(self.num_r_cols)
+        ]
+
+        self.mask = _tree_reduce(mask_t.bvor, RCFs)
+
+
+    def _read(self, addr):
+        outputs = []
+        # wire up all the read addresses and collect the outputs
+        for mem in self.cols:
+            mem.RADDR @= addr
+            outputs.append(mem.RDATA)
+
+        shift = None
+        rdata = None
+
+        for i in range(self.num_v_cols):
+            if shift is None:
+                shift = self.mask[i]
+            else:
+                shift |= self.mask[i]
+
+            data = shift.ite(
+                outputs[i+1],
+                outputs[i]
+            )
+
+            if rdata is None:
+                rdata = data
+            else:
+                rdata = rdata.concat(data)
+
+        assert isinstance(rdata, m.Bits[self.data_width])
+        return rdata
+
+    def _write(self, addr, data):
+        inputs = [
+            data[i*self.col_width:(i+1)*self.col_width]
+            for i in range(self.num_v_cols)
+        ]
+
+        assert all(isinstance(x, m.Bits[self.col_width]) for x in inputs)
+
+        # wire up the WE / addr
+        for mem in self.cols:
+            mem.WADDR @= addr
+            mem.WE @= self.we
+
+        shift = None
+        for i, mem in enumerate(self.cols):
+            if shift is None:
+                shift = self.mask[i]
+            elif i < self.num_v_cols:
+                shift |= self.mask[i]
+
+            # this logic isn't strictly necessary
+            if i < self.num_v_cols:
+                mem.WE @= self.we & ~self.mask[i]
+            else:
+                mem.WE @= self.we & shift
+
+            # each input is either fed to the current column or the next
+            # so each column gets its input either from current input or
+            # the previous
+            if i == 0:
+                # there is no "previous"
+                mem.WDATA @= inputs[i]
+            elif i < self.num_v_cols:
+                mem.WDATA @= shift.ite(
+                    inputs[i-1],
+                    inputs[i]
+                )
+            else:
+                # there is no "current"
+                mem.WDATA @= inputs[i-1]
+
+
+class SRAMModalMixin:
+    class State(m.Enum):
+        Normal = 0
+        Retention = 1
+        TotalRetention = 2
+        DeepSleep = 3
+
+    def _init_attrs(self,
+            addr_width: int,
+            data_width: int,
+            has_byte_enable: bool,
+            debug: bool,
+            *args,
+            **kwargs
+            ):
+        super()._init_attrs(
+                addr_width,
+                data_width,
+                has_byte_enable,
+                debug,
+                *args,
+                **kwargs)
+
+        self.debug = debug
+
+    def _init_io(self):
+        super()._init_io()
+        self.io += m.IO(
+                deep_sleep = m.In(m.Bit),
+                power_gate = m.In(m.Bit),
+                wake_ack = m.Out(m.Bit),
+        )
+        if self.debug:
+            self.io += m.IO(
+                current_state = m.Out(type(self).State),
+            )
+
+    @property
+    def _current_state(self):
+        return type(self).State([self.io.deep_sleep, self.io.power_gate])
+
+    @property
+    def _in_normal(self):
+        return self._current_state == type(self).State.Normal
+
+    @property
+    def ce(self):
+        return super().ce & self._in_normal & self.boot_reg.O
+
+    def _instance_subcomponents(self):
+        super()._instance_subcomponents()
+        self.Q_reg = m.Register(
+            T=m.Bits[self.data_width],
+            has_enable=True,
+        )()
+        self.boot_reg = m.Register(
+            init=m.Bit(0),
+        )()
+
+    def _connect(self):
+        super()._connect()
+        # Not sure if this correct
+        # boot reg blocks enable for a cycle after we enter normal mode
+        self.io.wake_ack @= self._in_normal
+        self.boot_reg.I @= self._in_normal
+
+        if self.debug:
+            self.io.current_state @= self._current_state
+
+    def _read(self, addr):
+        self.Q_reg.I @= super()._read(addr)
+        self.Q_reg.CE @= self.re
+        return self.Q_reg.O
+
+
+class SRAMDM(SRAMModalMixin, SRAMDouble): pass
+
+class SRAMSM(SRAMModalMixin, SRAMSingle): pass
+
+class SRAMDR(SRAMRedundancyMixin, SRAMDouble): pass
+
+class SRAMSR(SRAMRedundancyMixin, SRAMSingle): pass
+
+class SRAMSMR(SRAMModalMixin, SRAMRedundancyMixin, SRAMSingle): pass
+
+class SRAMDMR(SRAMModalMixin, SRAMRedundancyMixin, SRAMDouble): pass
+
+# Base -> Features -> Class
+SRAM_FEATURE_TABLE = {
+    SRAMSingle: {
+        frozenset(): SRAMSingle,
+        frozenset((SRAMModalMixin,)): SRAMSM,
+        frozenset((SRAMRedundancyMixin,)): SRAMSR,
+        frozenset((SRAMModalMixin, SRAMRedundancyMixin,)): SRAMSMR,
+    },
+    SRAMDouble: {
+        frozenset(): SRAMDouble,
+        frozenset((SRAMModalMixin,)): SRAMDM,
+        frozenset((SRAMRedundancyMixin,)): SRAMDR,
+        frozenset((SRAMModalMixin, SRAMRedundancyMixin,)): SRAMDMR,
+    },
+}
+
+
 class SRAMStateful(SRAMDouble):
     class CMD(m.Enum):
         NOP  = 0  # have a nop so that CMD actually has more than 1 cmd
@@ -128,7 +405,7 @@ class SRAMStateful(SRAMDouble):
     def __init__(self,
             addr_width: int,
             data_width: int,
-            has_byte_enable: bool,
+            has_byte_enable: bool = False,
             col_width: int = 4,
             debug: bool = False,
             *args,
@@ -187,7 +464,7 @@ class SRAMStateful(SRAMDouble):
                 1 << self.addr_width,
                 m.Bits[self.col_width],
                 read_latency=READ_LATENCY,
-                has_read_enable=True
+                has_read_enable=False
                 )()
             for _ in range(self.num_cols + 1) # + 1 for redundancy
         ]
@@ -243,10 +520,11 @@ class SRAMStateful(SRAMDouble):
             # Could just broadcast self.re
             if i < self.num_cols:
                 shift |= self.mask_reg.O[i]
-                mem.RE @= self.re & ~self.mask_reg.O[i]
+                #mem.RE @= self.re & ~self.mask_reg.O[i]
             else:
+                pass
                 # redundancy column
-                mem.RE @= self.re & shift
+                #mem.RE @= self.re & shift
 
             mem.RADDR @= addr
             outputs.append(mem.RDATA)
@@ -311,3 +589,4 @@ class SRAMStateful(SRAMDouble):
             else:
                 # there is no "current"
                 mem.WDATA @= inputs[i-1]
+
