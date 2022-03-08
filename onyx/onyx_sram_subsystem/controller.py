@@ -45,12 +45,12 @@ class Controller(m.Generator2):
         self.io.PREADY @= pready.O
         self.io.PSLVERR @= pslverr.O
 
-        deep_sleep = m.Register(m.Bit)()
-        power_gate = m.Register(m.Bit)()
-        col_cfg = m.Register(col_cfg_T)()
+        deep_sleep = m.Register(m.Bit, reset_type=m.AsyncResetN)()
+        power_gate = m.Register(m.Bit, reset_type=m.AsyncResetN)()
+        col_cfg = m.Register(col_cfg_T, reset_type=m.AsyncResetN)()
         # TODO: Will the memory hold this high or pulse it? Assume pulse for
         # now and hold register high until cleared by a read
-        wake_ack = m.Register(m.Bit)()
+        wake_ack = m.Register(m.Bit, reset_type=m.AsyncResetN)()
 
         self.io.deep_sleep @= deep_sleep.O
         self.io.power_gate @= power_gate.O
