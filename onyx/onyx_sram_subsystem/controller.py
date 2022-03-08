@@ -16,7 +16,7 @@ def make_APBIntf(addr_width: int, data_width: int):
 
 class Controller(m.Generator2):
     def __init__(self,
-                 id: int = 0x5A5A5A5A,
+                 magic_id: int = 0x5A5A5A5A,
                  addr_width: int = 32,
                  data_width: int = 32):
 
@@ -74,13 +74,15 @@ class Controller(m.Generator2):
                     read_data.I @= m.bits(power_gate.O, data_width)
                 elif self.io.PADDR[2:4] == 2:
                     read_data.I @= col_cfg.O
+                elif self.io.PADDR[2:4] == 3:
+                    read_data.I @= magic_id
 
             pready.I @= False
             if rd_en:
                 pready.I @= True
 
             pslverr.I @= False
-            if rd_en & (self.io.PADDR[2:4] > 2):
+            if rd_en & (self.io.PADDR[2:4] > 3):
                 pslverr.I @= True
 
-
+            # TODO: We could report write errors too?
