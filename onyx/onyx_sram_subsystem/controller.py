@@ -25,7 +25,8 @@ class Controller(m.Generator2):
 
         self.io = m.IO(power_gate=m.Out(m.Bit),
                        deep_sleep=m.Out(m.Bit),
-                       col_cfg=m.Out(col_cfg_T))
+                       col_cfg=m.Out(col_cfg_T),
+                       wake_ack=m.In(m.Bit))
         self.io += m.IO(
             **dict(m.Flip(make_APBIntf(addr_width, data_width)).field_dict.items())
         )
@@ -47,6 +48,9 @@ class Controller(m.Generator2):
         deep_sleep = m.Register(m.Bit)()
         power_gate = m.Register(m.Bit)()
         col_cfg = m.Register(col_cfg_T)()
+        # TODO: Will the memory hold this high or pulse it? Assume pulse for
+        # now and hold register high until cleared by a read
+        wake_ack = m.Register(m.Bit)()
 
         self.io.deep_sleep @= deep_sleep.O
         self.io.power_gate @= power_gate.O
@@ -57,24 +61,31 @@ class Controller(m.Generator2):
             deep_sleep.I @= deep_sleep.O
             power_gate.I @= power_gate.O
             col_cfg.I @= col_cfg.O
+            wake_ack.I @= wake_ack.O
+            if self.io.wake_ack:
+                wake_ack.I @= True
 
             if wr_en:
-                if self.io.PADDR[2:4] == 0:
+                if self.io.PADDR[2:5] == 0:
                     deep_sleep.I @= self.io.PWDATA[0]
-                elif self.io.PADDR[2:4] == 1:
+                elif self.io.PADDR[2:5] == 1:
                     power_gate.I @= self.io.PWDATA[0]
-                elif self.io.PADDR[2:4] == 2:
+                elif self.io.PADDR[2:5] == 2:
                     col_cfg.I @= self.io.PWDATA
 
             read_data.I @= read_data.O
             if rd_en:
-                if self.io.PADDR[2:4] == 0:
+                if self.io.PADDR[2:5] == 0:
                     read_data.I @= m.bits(deep_sleep.O, data_width)
-                elif self.io.PADDR[2:4] == 1:
+                elif self.io.PADDR[2:5] == 1:
                     read_data.I @= m.bits(power_gate.O, data_width)
-                elif self.io.PADDR[2:4] == 2:
+                elif self.io.PADDR[2:5] == 2:
                     read_data.I @= col_cfg.O
-                elif self.io.PADDR[2:4] == 3:
+                elif self.io.PADDR[2:5] == 3:
+                    read_data.I @= m.bits(wake_ack.O, data_width)
+                    # clear wake_ack reg
+                    wake_ack.I @= False
+                elif self.io.PADDR[2:5] == 4:
                     read_data.I @= magic_id
 
             pready.I @= False
@@ -82,7 +93,7 @@ class Controller(m.Generator2):
                 pready.I @= True
 
             pslverr.I @= False
-            if rd_en & (self.io.PADDR[2:4] > 3):
+            if rd_en & (self.io.PADDR[2:5] > 4):
                 pslverr.I @= True
 
             # TODO: We could report write errors too?
