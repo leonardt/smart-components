@@ -28,7 +28,8 @@ class Controller(m.Generator2):
                        col_cfg=m.Out(col_cfg_T),
                        wake_ack=m.In(m.Bit))
         self.io += m.IO(
-            **dict(m.Flip(make_APBIntf(addr_width, data_width)).field_dict.items())
+            **dict(m.Flip(make_APBIntf(addr_width,
+                                       data_width)).field_dict.items())
         )
         self.io += m.clock_io.gen_clock_io(reset_type=m.AsyncResetN)
 
@@ -45,9 +46,12 @@ class Controller(m.Generator2):
         self.io.PREADY @= pready.O
         self.io.PSLVERR @= pslverr.O
 
-        deep_sleep = m.Register(m.Bit, reset_type=m.AsyncResetN)()
-        power_gate = m.Register(m.Bit, reset_type=m.AsyncResetN)()
-        col_cfg = m.Register(col_cfg_T, reset_type=m.AsyncResetN)()
+        deep_sleep = m.Register(m.Bit,
+                                reset_type=m.AsyncResetN)(name="deep_sleep_reg")
+        power_gate = m.Register(m.Bit,
+                                reset_type=m.AsyncResetN)(name="power_gate_reg")
+        col_cfg = m.Register(col_cfg_T,
+                             reset_type=m.AsyncResetN)(name="col_cfg_reg")
         # TODO: Will the memory hold this high or pulse it? Assume pulse for
         # now and hold register high until cleared by a read
         wake_ack = m.Register(m.Bit, reset_type=m.AsyncResetN)()
@@ -97,3 +101,6 @@ class Controller(m.Generator2):
                 pslverr.I @= True
 
             # TODO: We could report write errors too?
+
+            # Avoid verilator UNUSED error for other bits
+            self.io.PADDR.unused()
