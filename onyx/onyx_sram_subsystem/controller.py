@@ -16,17 +16,19 @@ def make_APBIntf(addr_width: int, data_width: int):
 
 class Controller(m.Generator2):
     def __init__(self,
+                 num_r_cols: int,
+                 num_v_cols: int,
                  magic_id: int = 0x5A5A5A5A,
                  addr_width: int = 32,
                  data_width: int = 32):
 
-        # TODO: What width will this be? We may need multiple addresses
-        col_cfg_T = m.Bits[data_width]
-
+        rcf_len = m.bitutils.clog2safe(num_v_cols)
         self.io = m.IO(power_gate=m.Out(m.Bit),
                        deep_sleep=m.Out(m.Bit),
-                       col_cfg=m.Out(col_cfg_T),
-                       wake_ack=m.In(m.Bit))
+                       wake_ack=m.In(m.Bit),
+                       RCE=m.Out(m.Bits[num_r_cols]),
+                       **{f"RCF{i}A": m.Out(m.Bits[rcf_len])
+                          for i in range(num_r_cols)})
         self.io += m.IO(
             **dict(m.Flip(make_APBIntf(addr_width,
                                        data_width)).field_dict.items())
@@ -50,24 +52,54 @@ class Controller(m.Generator2):
                                 reset_type=m.AsyncResetN)(name="deep_sleep_reg")
         power_gate = m.Register(m.Bit,
                                 reset_type=m.AsyncResetN)(name="power_gate_reg")
-        col_cfg = m.Register(col_cfg_T,
-                             reset_type=m.AsyncResetN)(name="col_cfg_reg")
+        RCE = m.Register(m.Bits[num_r_cols],
+                         reset_type=m.AsyncResetN)(name="RCE_reg")
+
+        rcf_regs = [
+            m.Register(m.Bits[rcf_len],
+                       reset_type=m.AsyncResetN)(name=f"RCF{i}A_reg")
+            for i in range(num_r_cols)
+        ]
         # TODO: Will the memory hold this high or pulse it? Assume pulse for
         # now and hold register high until cleared by a read
         wake_ack = m.Register(m.Bit, reset_type=m.AsyncResetN)()
 
         self.io.deep_sleep @= deep_sleep.O
         self.io.power_gate @= power_gate.O
-        self.io.col_cfg @= col_cfg.O
+
+        # TODO: Need to validate data_width vs num_r_cols/num_v_cols for
+        # read/write logic
+        self.io.RCE @= RCE.O
+
+        for i in range(num_r_cols):
+            getattr(self.io, f"RCF{i}A").wire(rcf_regs[i].O)
+            rcf_regs[i].I @= m.mux([
+                rcf_regs[i].O,
+                self.io.PWDATA[:m.bitutils.clog2safe(num_v_cols)]
+            ], self.io.PADDR[2:5] == (3 + i))
+
+        read_data.I @= m.mux([
+            m.bits(deep_sleep.O, data_width),
+            m.bits(power_gate.O, data_width),
+            m.zext_to(RCE.O, data_width),
+        ] + [m.zext_to(reg.O, data_width) for reg in rcf_regs] + [
+            m.bits(wake_ack.O, data_width),
+            magic_id
+        ], self.io.PADDR[2:5])
 
         @m.inline_combinational()
         def logic():
             deep_sleep.I @= deep_sleep.O
             power_gate.I @= power_gate.O
-            col_cfg.I @= col_cfg.O
             wake_ack.I @= wake_ack.O
+
+            RCE.I @= RCE.O
+
             if self.io.wake_ack:
                 wake_ack.I @= True
+
+            if rd_en & (self.io.PADDR[2:5] == 3):
+                wake_ack.I @= False
 
             if wr_en:
                 if self.io.PADDR[2:5] == 0:
@@ -75,22 +107,7 @@ class Controller(m.Generator2):
                 elif self.io.PADDR[2:5] == 1:
                     power_gate.I @= self.io.PWDATA[0]
                 elif self.io.PADDR[2:5] == 2:
-                    col_cfg.I @= self.io.PWDATA
-
-            read_data.I @= read_data.O
-            if rd_en:
-                if self.io.PADDR[2:5] == 0:
-                    read_data.I @= m.bits(deep_sleep.O, data_width)
-                elif self.io.PADDR[2:5] == 1:
-                    read_data.I @= m.bits(power_gate.O, data_width)
-                elif self.io.PADDR[2:5] == 2:
-                    read_data.I @= col_cfg.O
-                elif self.io.PADDR[2:5] == 3:
-                    read_data.I @= m.bits(wake_ack.O, data_width)
-                    # clear wake_ack reg
-                    wake_ack.I @= False
-                elif self.io.PADDR[2:5] == 4:
-                    read_data.I @= magic_id
+                    RCE.I @= self.io.PWDATA[:num_r_cols]
 
             pready.I @= False
             if rd_en:
@@ -104,3 +121,4 @@ class Controller(m.Generator2):
 
             # Avoid verilator UNUSED error for other bits
             self.io.PADDR.unused()
+            self.io.PWDATA.unused()
