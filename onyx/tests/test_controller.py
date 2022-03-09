@@ -11,11 +11,13 @@ def expect_write(tester, addr, output_name, data):
     tester.circuit.PWRITE = 1
     tester.circuit.PWDATA = data
     tester.advance_cycle()
+    tester.circuit.PSLVERR.expect(0)
     tester.circuit.PENABLE = 1
     tester.advance_cycle()
     tester.circuit.PENABLE = 0
     tester.circuit.PSEL = 0
     getattr(tester.circuit, output_name).expect(data)
+    expect_read(tester, addr, data)
 
 
 def expect_read(tester, addr, data):
@@ -24,6 +26,7 @@ def expect_read(tester, addr, data):
     tester.circuit.PENABLE = 0
     tester.circuit.PWRITE = 0
     tester.advance_cycle()
+    tester.circuit.PSLVERR.expect(0)
     tester.circuit.PENABLE = 1
     tester.advance_cycle()
     tester.circuit.PENABLE = 0

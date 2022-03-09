@@ -114,7 +114,7 @@ class Controller(m.Generator2):
                 pready.I @= True
 
             pslverr.I @= False
-            if rd_en & (self.io.PADDR[2:5] > 4):
+            if rd_en & (self.io.PADDR[2:5] > 4 + num_r_cols):
                 pslverr.I @= True
 
             # TODO: We could report write errors too?
