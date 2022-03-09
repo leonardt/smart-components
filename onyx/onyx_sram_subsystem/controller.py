@@ -119,6 +119,6 @@ class Controller(m.Generator2):
 
             # TODO: We could report write errors too?
 
-            # Avoid verilator UNUSED error for other bits
-            self.io.PADDR.unused()
-            self.io.PWDATA.unused()
+        # Avoid verilator UNUSED error for unused bits
+        self.io.PADDR.unused()
+        self.io.PWDATA.unused()
