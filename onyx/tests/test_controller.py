@@ -13,6 +13,7 @@ def expect_write(tester, addr, output_name, data):
     tester.advance_cycle()
     tester.circuit.PSLVERR.expect(0)
     tester.circuit.PENABLE = 1
+    tester.wait_until_high(tester.circuit.PREADY)
     tester.advance_cycle()
     tester.circuit.PENABLE = 0
     tester.circuit.PSEL = 0
@@ -28,6 +29,7 @@ def expect_read(tester, addr, data):
     tester.advance_cycle()
     tester.circuit.PSLVERR.expect(0)
     tester.circuit.PENABLE = 1
+    tester.wait_until_high(tester.circuit.PREADY)
     tester.advance_cycle()
     tester.circuit.PENABLE = 0
     tester.circuit.PSEL = 0

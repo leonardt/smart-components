@@ -37,7 +37,7 @@ class Controller(m.Generator2):
 
         read_data = m.Register(m.UInt[data_width], reset_type=m.AsyncResetN)()
 
-        pready = m.Register(m.Bit, reset_type=m.AsyncResetN)()
+        self.io.PREADY @= 1
         pslverr = m.Register(m.Bit, reset_type=m.AsyncResetN)()
 
         setup_phase = self.io.PSEL & ~self.io.PENABLE
@@ -45,7 +45,6 @@ class Controller(m.Generator2):
         rd_en = setup_phase & ~self.io.PWRITE
 
         self.io.PRDATA @= read_data.O
-        self.io.PREADY @= pready.O
         self.io.PSLVERR @= pslverr.O
 
         deep_sleep = m.Register(m.Bit,
@@ -108,10 +107,6 @@ class Controller(m.Generator2):
                     power_gate.I @= self.io.PWDATA[0]
                 elif self.io.PADDR[2:5] == 2:
                     RCE.I @= self.io.PWDATA[:num_r_cols]
-
-            pready.I @= False
-            if rd_en:
-                pready.I @= True
 
             pslverr.I @= False
             if rd_en & (self.io.PADDR[2:5] > 4 + num_r_cols):
