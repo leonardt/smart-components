@@ -117,3 +117,7 @@ class Controller(m.Generator2):
         # Avoid verilator UNUSED error for unused bits
         self.io.PADDR.unused()
         self.io.PWDATA.unused()
+
+
+if __name__ == "__main__":
+    m.compile("build/Controller", Controller(2, 32 / 4))
