@@ -15,14 +15,15 @@ from onyx_sram_subsystem.mock_mem import SRAM_FEATURE_TABLE
 ADDR_WIDTH = 8
 DATA_WIDTH = 8
 
+
 @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
 @pytest.mark.parametrize('mixins, params', [
     ((), {}),
     ((SRAMModalMixin,), {}),
     ((SRAMRedundancyMixin,), {'num_r_cols': 1}),
-#    ((SRAMRedundancyMixin,), {'num_r_cols': 2}),
+    ((SRAMRedundancyMixin,), {'num_r_cols': 2}),
     ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 1}),
-#    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 2}),
+    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 2}),
     ])
 def test_sram(base, mixins, params):
     generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
@@ -99,6 +100,7 @@ def test_sram(base, mixins, params):
 @pytest.mark.parametrize('mixins, params', [
     ((SRAMRedundancyMixin,), {'num_r_cols': 1}),
     ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 1}),
+    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 2})
     ])
 def test_redundancy(base, mixins, params):
     generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
@@ -132,7 +134,7 @@ def test_redundancy(base, mixins, params):
         tester.step(2)
         tester.circuit.wake_ack.expect(hw.Bit(1))
 
-    # enable redudancy on the first column
+    # enable redudancy on the all columns
     tester.circuit.RCE = hw.BitVector[params['num_r_cols']](-1)
 
     for i in range(params['num_r_cols']):
@@ -190,7 +192,7 @@ def test_redundancy(base, mixins, params):
             tester.circuit.WADDR = hw.BitVector[ADDR_WIDTH](0)
         tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](0)
         tester.step(2)
-        tester.circuit.RDATA.expect(hw.BitVector[DATA_WIDTH](i) >> Definition.col_width)
+        tester.circuit.RDATA.expect(hw.BitVector[DATA_WIDTH](i) >> Definition.col_width*Definition.num_r_cols)
 
     tester.compile_and_run("verilator", flags=["-Wno-fatal"])
 
