@@ -1,3 +1,5 @@
+import operator as op
+
 import magma as m
 
 # I am not making the read latency a generator param
@@ -128,6 +130,27 @@ def _tree_reduce(f, lst):
         return f(_tree_reduce(f, lst[:n // 2]), _tree_reduce(f, lst[n // 2:]))
 
 
+def _build_mux_tree(lst):
+    # Takes a list of (predicate, data)
+    # returns a mux tree equivelent to:
+    #   if predicate[0]:
+    #       return data[0]
+    #   elif prdicate[1]:
+    #       return data[1]
+    #   ...
+    #   else:
+    #       return data[-1]
+    n = len(lst)
+    if n == 1:
+        return lst[0][1]
+    else:
+        assert n >= 2
+        top = lst[:n // 2]
+        bot = lst[n // 2:]
+        cond = _tree_reduce(op.or_, [pred for pred, _ in top])
+        return cond.ite(_build_mux_tree(top), _build_mux_tree(bot))
+
+
 class SRAMRedundancyMixin:
     def __init__(
         self,
@@ -231,10 +254,11 @@ class SRAMRedundancyMixin:
         #       )
         #   )
         def build_ite(shifts, outputs, i):
-            expr = outputs[i]
+            lst = [(True, outputs[i])]
             for idx, shift in enumerate(shifts):
-                expr = shift.ite(outputs[i + idx + 1], expr)
-            return expr
+                lst.append((shift, outputs[i + idx + 1]))
+            lst.reverse()
+            return _build_mux_tree(lst)
 
         shifts = [m.Bit(0) for _ in range(self.num_r_cols)]
         rdata = None
@@ -307,10 +331,12 @@ class SRAMRedundancyMixin:
                 assert len(offsets) < max_inputs
                 shift_offset = max_inputs - len(offsets)
 
-            expr = inputs[i - offsets[0]]
+            lst = [(True, inputs[i - offsets[0]])]
             for idx, offset in enumerate(offsets[1:]):
-                expr = shifts[idx + shift_offset].ite(inputs[i - offset], expr)
-            return expr
+                lst.append((shifts[idx + shift_offset], inputs[i - offset]))
+
+            lst.reverse()
+            return _build_mux_tree(lst)
 
         shifts = [m.Bit(0) for _ in range(self.num_r_cols)]
         for i, mem in enumerate(self.cols):
