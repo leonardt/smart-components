@@ -17,14 +17,30 @@ DATA_WIDTH = 8
 
 
 @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
-@pytest.mark.parametrize('mixins, params', [
-    ((), {}),
-    ((SRAMModalMixin,), {}),
-    ((SRAMRedundancyMixin,), {'num_r_cols': 1}),
-    ((SRAMRedundancyMixin,), {'num_r_cols': 2}),
-    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 1}),
-    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 2}),
-    ])
+@pytest.mark.parametrize(
+    'mixins, params', [
+        ((), {}),
+        ((SRAMModalMixin, ), {}),
+        ((SRAMRedundancyMixin, ), {
+            'num_r_cols': 1
+        }),
+        ((SRAMRedundancyMixin, ), {
+            'num_r_cols': 2
+        }),
+        ((
+            SRAMModalMixin,
+            SRAMRedundancyMixin,
+        ), {
+            'num_r_cols': 1
+        }),
+        ((
+            SRAMModalMixin,
+            SRAMRedundancyMixin,
+        ), {
+            'num_r_cols': 2
+        }),
+    ]
+)
 def test_sram(base, mixins, params):
     generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
     Definition = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)
@@ -62,12 +78,11 @@ def test_sram(base, mixins, params):
         tester.circuit.RCE = hw.BitVector[params['num_r_cols']](-1)
         for i in range(params['num_r_cols']):
             setattr(
-                tester.circuit,
-                f'RCF{i}A',
+                tester.circuit, f'RCF{i}A',
                 hw.BitVector[m.bitutils.clog2safe(Definition.num_v_cols)](i)
             )
 
-    for i in range(1<<ADDR_WIDTH):
+    for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(0)
         tester.circuit.WEn = hw.Bit(1)
@@ -80,7 +95,7 @@ def test_sram(base, mixins, params):
         tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](i)
         tester.step(2)
 
-    for i in range(1<<ADDR_WIDTH):
+    for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(1)
         tester.circuit.WEn = hw.Bit(0)
@@ -97,11 +112,23 @@ def test_sram(base, mixins, params):
 
 
 @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
-@pytest.mark.parametrize('mixins, params', [
-    ((SRAMRedundancyMixin,), {'num_r_cols': 1}),
-    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 1}),
-    ((SRAMModalMixin, SRAMRedundancyMixin,), {'num_r_cols': 2})
-    ])
+@pytest.mark.parametrize(
+    'mixins, params', [
+        ((SRAMRedundancyMixin, ), {
+            'num_r_cols': 1
+        }), ((
+            SRAMModalMixin,
+            SRAMRedundancyMixin,
+        ), {
+            'num_r_cols': 1
+        }), ((
+            SRAMModalMixin,
+            SRAMRedundancyMixin,
+        ), {
+            'num_r_cols': 2
+        })
+    ]
+)
 def test_redundancy(base, mixins, params):
     generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
     Definition = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)
@@ -139,13 +166,12 @@ def test_redundancy(base, mixins, params):
 
     for i in range(params['num_r_cols']):
         setattr(
-            tester.circuit,
-            f'RCF{i}A',
+            tester.circuit, f'RCF{i}A',
             hw.BitVector[m.bitutils.clog2safe(Definition.num_v_cols)](i)
         )
 
     # Write 0 everywhere
-    for i in range(1<<ADDR_WIDTH):
+    for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(0)
         tester.circuit.WEn = hw.Bit(1)
@@ -162,7 +188,7 @@ def test_redundancy(base, mixins, params):
     tester.circuit.RCE = hw.BitVector[params['num_r_cols']](0)
 
     # Write i everywhere
-    for i in range(1<<ADDR_WIDTH):
+    for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(0)
         tester.circuit.WEn = hw.Bit(1)
@@ -181,7 +207,7 @@ def test_redundancy(base, mixins, params):
     # read everything back
     # the top bits should be 0,
     # and the bottom bits should be the top bits
-    for i in range(1<<ADDR_WIDTH):
+    for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(1)
         tester.circuit.WEn = hw.Bit(0)
@@ -192,7 +218,10 @@ def test_redundancy(base, mixins, params):
             tester.circuit.WADDR = hw.BitVector[ADDR_WIDTH](0)
         tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](0)
         tester.step(2)
-        tester.circuit.RDATA.expect(hw.BitVector[DATA_WIDTH](i) >> Definition.col_width*Definition.num_r_cols)
+        tester.circuit.RDATA.expect(
+            hw.BitVector[DATA_WIDTH](i) >> Definition.col_width *
+            Definition.num_r_cols
+        )
 
     tester.compile_and_run("verilator", flags=["-Wno-fatal"])
 
@@ -202,7 +231,7 @@ def test_stateful():
     CMD = SRAMStateful.CMD
     Stateful = SRAMStateful(ADDR_WIDTH, DATA_WIDTH, False, debug=True)
     tester = fault.Tester(Stateful, Stateful.CLK)
-    for mask in map(hw.BitVector[DATA_WIDTH], (0,1,2)):
+    for mask in map(hw.BitVector[DATA_WIDTH], (0, 1, 2)):
         tester.circuit.CEn = hw.Bit(1)
         tester.step(2)
         tester.circuit.current_state.expect(State.SLEEP)
@@ -220,7 +249,7 @@ def test_stateful():
         tester.circuit.current_state.expect(State.READY)
         tester.circuit.mask.expect(mask[:2])
 
-        for i in range(1<<ADDR_WIDTH):
+        for i in range(1 << ADDR_WIDTH):
             tester.circuit.CEn = hw.Bit(0)
             tester.circuit.REn = hw.Bit(0)
             tester.circuit.WEn = hw.Bit(1)
@@ -229,7 +258,7 @@ def test_stateful():
             tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](i)
             tester.step(2)
 
-        for i in range(1<<ADDR_WIDTH):
+        for i in range(1 << ADDR_WIDTH):
             tester.circuit.CEn = hw.Bit(0)
             tester.circuit.REn = hw.Bit(1)
             tester.circuit.WEn = hw.Bit(0)
@@ -245,5 +274,3 @@ def test_stateful():
         tester.circuit.current_state.expect(State.SLEEP)
 
     tester.compile_and_run("verilator", flags=["-Wno-fatal"])
-
-
