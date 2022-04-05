@@ -15,14 +15,17 @@ class SRAMBase(m.Generator2):
         *args,
         **kwargs,
     ):
-        self._init_attrs(addr_width, data_width, has_byte_enable, *args,
-                         **kwargs)
+        self._init_attrs(
+            addr_width, data_width, has_byte_enable, *args, **kwargs
+        )
         self._init_io()
         self._instance_subcomponents()
         self._connect()
 
-    def _init_attrs(self, addr_width: int, data_width: int,
-                    has_byte_enable: bool, *args, **kwargs):
+    def _init_attrs(
+        self, addr_width: int, data_width: int, has_byte_enable: bool, *args,
+        **kwargs
+    ):
 
         if addr_width <= 0:
             raise ValueError()
@@ -52,10 +55,12 @@ class SRAMBase(m.Generator2):
             self.io += m.IO(WBEn=m.Bits[data_width / 8])
 
     def _instance_subcomponents(self):
-        self.memory = m.Memory(1 << self.addr_width,
-                               m.Bits[self.data_width],
-                               read_latency=READ_LATENCY,
-                               has_read_enable=False)()
+        self.memory = m.Memory(
+            1 << self.addr_width,
+            m.Bits[self.data_width],
+            read_latency=READ_LATENCY,
+            has_read_enable=False
+        )()
 
     def _connect(self):
         pass
@@ -83,7 +88,6 @@ class SRAMBase(m.Generator2):
 
 
 class SRAMSingle(SRAMBase):
-
     def _init_io(self):
         super()._init_io()
         self.io += m.IO(ADDR=m.In(m.Bits[self.addr_width]), )
@@ -95,7 +99,6 @@ class SRAMSingle(SRAMBase):
 
 
 class SRAMDouble(SRAMBase):
-
     def _init_io(self):
         super()._init_io()
         self.io += m.IO(
@@ -139,14 +142,18 @@ class SRAMRedundancyMixin:
     ):
         # All widths are number of bits
         # num_r_cols is number of redundancy columns
-        super().__init__(addr_width, data_width, has_byte_enable, col_width,
-                         num_r_cols, debug, *args, **kwargs)
+        super().__init__(
+            addr_width, data_width, has_byte_enable, col_width, num_r_cols,
+            debug, *args, **kwargs
+        )
 
-    def _init_attrs(self, addr_width: int, data_width: int,
-                    has_byte_enable: bool, col_width: int, num_r_cols: int,
-                    debug: bool, *args, **kwargs):
-        super()._init_attrs(addr_width, data_width, has_byte_enable, debug,
-                            *args, **kwargs)
+    def _init_attrs(
+        self, addr_width: int, data_width: int, has_byte_enable: bool,
+        col_width: int, num_r_cols: int, debug: bool, *args, **kwargs
+    ):
+        super()._init_attrs(
+            addr_width, data_width, has_byte_enable, debug, *args, **kwargs
+        )
 
         if col_width <= 0:
             raise ValueError()
@@ -173,11 +180,14 @@ class SRAMRedundancyMixin:
 
     def _init_io(self):
         super()._init_io()
-        self.io += m.IO(RCE=m.In(m.Bits[self.num_r_cols]),
-                        **{
-                            f'RCF{i}A':
-                            m.In(m.Bits[m.bitutils.clog2safe(self.num_v_cols)])
-                            for i in range(self.num_r_cols)})
+        self.io += m.IO(
+            RCE=m.In(m.Bits[self.num_r_cols]),
+            **{
+                f'RCF{i}A':
+                m.In(m.Bits[m.bitutils.clog2safe(self.num_v_cols)])
+                for i in range(self.num_r_cols)
+            }
+        )
 
     def _instance_subcomponents(self):
         self.cols = [
@@ -192,8 +202,9 @@ class SRAMRedundancyMixin:
         mask_t = m.Bits[self.num_v_cols]
         zero = mask_t(0)
         RCFs = [
-            self.io.RCE[i].ite(_binary_to_unary(getattr(self.io, f'RCF{i}A')),
-                               zero) for i in range(self.num_r_cols)
+            self.io.RCE[i].ite(
+                _binary_to_unary(getattr(self.io, f'RCF{i}A')), zero
+            ) for i in range(self.num_r_cols)
         ]
 
         self.mask = _tree_reduce(mask_t.bvor, RCFs)
@@ -222,7 +233,7 @@ class SRAMRedundancyMixin:
         def build_ite(shifts, outputs, i):
             expr = outputs[i]
             for idx, shift in enumerate(shifts):
-                expr = shift.ite(outputs[i+idx+1], expr)
+                expr = shift.ite(outputs[i + idx + 1], expr)
             return expr
 
         shifts = [m.Bit(0) for _ in range(self.num_r_cols)]
@@ -234,7 +245,7 @@ class SRAMRedundancyMixin:
                 shifts[idx] |= prev & self.mask[i]
                 prev = shifts[idx]
 
-            data  = build_ite(shifts, outputs, i)
+            data = build_ite(shifts, outputs, i)
 
             if rdata is None:
                 rdata = data
@@ -243,7 +254,6 @@ class SRAMRedundancyMixin:
 
         assert isinstance(rdata, m.Bits[self.data_width])
         return rdata
-
 
     def _write(self, addr, data):
         # break the inputs in chuncks
@@ -282,23 +292,25 @@ class SRAMRedundancyMixin:
         def build_ite(shits, inputs, i):
             max_inputs = len(shifts) + 1
             if i < self.num_r_cols:
-                offsets = [k for k in range(i+1)]
+                offsets = [k for k in range(i + 1)]
                 assert len(offsets) < max_inputs
                 shift_offset = 0
             elif i < self.num_v_cols:
-                offsets = [k for k in range(self.num_r_cols+1)]
+                offsets = [k for k in range(self.num_r_cols + 1)]
                 assert len(offsets) == max_inputs
                 shift_offset = 0
             else:
-                offsets = [k for k in range(i-self.num_v_cols+1, self.num_r_cols+1)]
+                offsets = [
+                    k for k in
+                    range(i - self.num_v_cols + 1, self.num_r_cols + 1)
+                ]
                 assert len(offsets) < max_inputs
                 shift_offset = max_inputs - len(offsets)
 
-            expr = inputs[i-offsets[0]]
+            expr = inputs[i - offsets[0]]
             for idx, offset in enumerate(offsets[1:]):
-                expr = shifts[idx+shift_offset].ite(inputs[i-offset], expr)
+                expr = shifts[idx + shift_offset].ite(inputs[i - offset], expr)
             return expr
-
 
         shifts = [m.Bit(0) for _ in range(self.num_r_cols)]
         for i, mem in enumerate(self.cols):
@@ -328,10 +340,13 @@ class SRAMModalMixin:
         TotalRetention = 2
         DeepSleep = 3
 
-    def _init_attrs(self, addr_width: int, data_width: int,
-                    has_byte_enable: bool, debug: bool, *args, **kwargs):
-        super()._init_attrs(addr_width, data_width, has_byte_enable, debug,
-                            *args, **kwargs)
+    def _init_attrs(
+        self, addr_width: int, data_width: int, has_byte_enable: bool,
+        debug: bool, *args, **kwargs
+    ):
+        super()._init_attrs(
+            addr_width, data_width, has_byte_enable, debug, *args, **kwargs
+        )
 
         self.debug = debug
 
@@ -429,7 +444,6 @@ SRAM_FEATURE_TABLE = {
 
 
 class SRAMStateful(SRAMDouble):
-
     class CMD(m.Enum):
         NOP = 0  # have a nop so that CMD actually has more than 1 cmd
         INIT = 1
@@ -439,23 +453,29 @@ class SRAMStateful(SRAMDouble):
         BOOT = 1
         READY = 2
 
-    def __init__(self,
-                 addr_width: int,
-                 data_width: int,
-                 has_byte_enable: bool = False,
-                 col_width: int = 4,
-                 debug: bool = False,
-                 *args,
-                 **kwargs):
+    def __init__(
+        self,
+        addr_width: int,
+        data_width: int,
+        has_byte_enable: bool = False,
+        col_width: int = 4,
+        debug: bool = False,
+        *args,
+        **kwargs
+    ):
 
-        super().__init__(addr_width, data_width, has_byte_enable, col_width,
-                         debug, *args, **kwargs)
+        super().__init__(
+            addr_width, data_width, has_byte_enable, col_width, debug, *args,
+            **kwargs
+        )
 
-    def _init_attrs(self, addr_width: int, data_width: int,
-                    has_byte_enable: bool, col_width: int, debug: bool, *args,
-                    **kwargs):
-        super()._init_attrs(addr_width, data_width, has_byte_enable, *args,
-                            **kwargs)
+    def _init_attrs(
+        self, addr_width: int, data_width: int, has_byte_enable: bool,
+        col_width: int, debug: bool, *args, **kwargs
+    ):
+        super()._init_attrs(
+            addr_width, data_width, has_byte_enable, *args, **kwargs
+        )
 
         if col_width <= 0:
             raise ValueError()
@@ -485,11 +505,12 @@ class SRAMStateful(SRAMDouble):
 
     def _instance_subcomponents(self):
         self.cols = [
-            m.Memory(1 << self.addr_width,
-                     m.Bits[self.col_width],
-                     read_latency=READ_LATENCY,
-                     has_read_enable=False)()
-            for _ in range(self.num_cols + 1)  # + 1 for redundancy
+            m.Memory(
+                1 << self.addr_width,
+                m.Bits[self.col_width],
+                read_latency=READ_LATENCY,
+                has_read_enable=False
+            )() for _ in range(self.num_cols + 1)  # + 1 for redundancy
         ]
         self.state = m.Register(init=type(self).State.SLEEP)()
         self.mask_reg = m.Register(T=m.Bits[self.num_cols], has_enable=True)()
