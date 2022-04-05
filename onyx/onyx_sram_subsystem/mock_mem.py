@@ -216,20 +216,20 @@ class SRAMRedundancyMixin:
             mem.RADDR @= addr
             outputs.append(mem.RDATA)
 
-        #The following function is meant to build this pattern:
-        # shifts[k].ite(
-        #   outputs[i+k+1],
-        #   shifts[k-1].ite(
-        #       outputs[i+k],
-        #       shifts[k-2].ite(
-        #           ...,
-        #           shifts[0].ite(
-        #               outputs[i+1],
-        #               outputs[i]
+        # The following function is meant to build this pattern:
+        #   shifts[k].ite(
+        #       outputs[i+k+1],
+        #       shifts[k-1].ite(
+        #           outputs[i+k],
+        #           shifts[k-2].ite(
+        #               ...,
+        #               shifts[0].ite(
+        #                   outputs[i+1],
+        #                   outputs[i]
+        #               )
         #           )
         #       )
         #   )
-        # )
         def build_ite(shifts, outputs, i):
             expr = outputs[i]
             for idx, shift in enumerate(shifts):
@@ -264,31 +264,31 @@ class SRAMRedundancyMixin:
 
         assert all(isinstance(x, m.Bits[self.col_width]) for x in inputs)
 
-        #The following function is meant to build this pattern:
-        # if i == 0:
-        #     retun inputs[i]
-        # elif i == 1:
-        #     return shifts[0].ite(inputs[i-1], inputs[i])
-        # elif i < self.num_v_cols:
-        #     return shifts[1].ite(
-        #         inputs[i-2],
-        #         shifts[0].ite(inputs[i-1], inputs[i])
-        #     )
-        # elif i == self.num_v_cols:
-        #     return shifts[1].ite(inputs[i-2], inputs[i-1])
-        # else:
-        #     return inputs[i-2]
+        # The following function is meant to build this pattern:
+        #   if i == 0:
+        #       retun inputs[i]
+        #   elif i == 1:
+        #       return shifts[0].ite(inputs[i-1], inputs[i])
+        #   elif i < self.num_v_cols:
+        #       return shifts[1].ite(
+        #           inputs[i-2],
+        #           shifts[0].ite(inputs[i-1], inputs[i])
+        #       )
+        #   elif i == self.num_v_cols:
+        #       return shifts[1].ite(inputs[i-2], inputs[i-1])
+        #   else:
+        #       return inputs[i-2]
         #
-        #Not sure how to generalize it with ... above is for num_r_cols = 2
-        #But basically there are 3 cases,
-        # i < num_r_cols:
-        #   we select from the first i chuncks. Use first shift bits.
-        # i < num_v_cols:
-        #   The "normal" case where the ith column consumes one preceding
-        #   num_r_col+1 chunks. Use all the shift bits.
-        # i >= num_v_cols:
-        #   The redundancy columns which must have a shift enabled to be
-        #   relevant hence we use last shift bits.
+        # Not sure how to generalize it with ... above is for num_r_cols = 2
+        # But basically there are 3 cases,
+        #   i < num_r_cols:
+        #       we select from the first i chuncks. Use first shift bits.
+        #   i < num_v_cols:
+        #       The "normal" case where the ith column consumes one preceding
+        #       num_r_col+1 chunks. Use all the shift bits.
+        #   i >= num_v_cols:
+        #       The redundancy columns which must have a shift enabled to be
+        #       relevant hence we use last shift bits.
         def build_ite(shits, inputs, i):
             max_inputs = len(shifts) + 1
             if i < self.num_r_cols:
