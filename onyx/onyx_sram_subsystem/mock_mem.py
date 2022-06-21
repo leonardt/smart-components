@@ -190,6 +190,7 @@ class SRAMRedundancyMixin:
         self.col_width = col_width
         self.num_r_cols = num_r_cols
         self.debug = debug
+        self.redundancy_addr_t = m.Bits[m.bitutils.clog2safe(self.num_v_cols)]
 
     @property
     def num_v_cols(self):
@@ -207,7 +208,7 @@ class SRAMRedundancyMixin:
             RCE=m.In(m.Bits[self.num_r_cols]),
             **{
                 f'RCF{i}A':
-                m.In(m.Bits[m.bitutils.clog2safe(self.num_v_cols)])
+                m.In(self.redundancy_addr_t)
                 for i in range(self.num_r_cols)
             }
         )

@@ -78,7 +78,7 @@ def test_sram(base, mixins, params):
         for i in range(params['num_r_cols']):
             setattr(
                 tester.circuit, f'RCF{i}A',
-                hw.BitVector[m.bitutils.clog2safe(Definition.num_v_cols)](i)
+                hw.BitVector[Definition.redundancy_addr_t.size](i)
             )
 
     for i in range(1 << ADDR_WIDTH):
