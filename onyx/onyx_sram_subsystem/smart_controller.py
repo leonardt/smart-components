@@ -1,3 +1,5 @@
+from collections import defaultdict
+import itertools as it
 import functools as ft
 import typing as tp
 
@@ -7,7 +9,7 @@ import hwtypes as ht
 from mock_mem import SRAMDMR
 from session import Offer, Choose, Send, Recieve, Sequence
 from session import SessionTypeVisitor, SessionT, LabelT
-from util import inverse_look_up
+from util import inverse_look_up, BiMap
 from visitors import MaxRecieveBitVisitor, MaxSendBitVisitor
 from visitors import MaxOfferVisitor, MaxChooseVisitor
 from visitors import LongestPathVisitor
@@ -94,161 +96,136 @@ LABEL_TO_CMDS = {
 
 
 
-'''
-For right now I am going to assume that session types
-come from the following grammar:
-    session_t := Sequence( sequence_args )
-    sequence_args := send , sequence_args
-                   | receive , sequence_args
-                   | offer
-                   | choose
-                   | label
-    send := Send( DATA_T )
-    receive := Receive( DATA_T )
-    offer := Offer({ branch_args })
-    choose := Choose({ branch_args })
-    branch_args := branch_arg
-                 | branch_arg , branch_args
-    branch_arg := CMD : ( branch_seq ) ,
-    branch_seq := send , branch_seq
-                | receive ,  branch_seq
-                | label
-    label := LabelValue
-
-Basically I expect every type to be a sequence of send / receives
-terminated by an Offer, Choose, or Label
-Further every option in a Offer / Choose shoud be a sequence of send or
-receive terminated by a label
-Note that this requires the type be non terminating.
-Aditionally note that any non terminating type can be
-transformed into this form.
-First consider a type:
-    S = Sequence(head, Offer({..., cmd_label: Sequence(cmd_body)}), tail)
-Assume head and cmd_body contain only send / recieves and no transition.
-This would violate the above grammar in two ways.  cmd_body isn't terminated by
-a transition and S is not terminated by its offer.
-we can rewrite this as:
-    S = Sequence(..., Offer({..., cmd: Sequence(cmd_body, S')}))
-    S' = Sequence(tail)
-This normal form makes tracking state simpler
-would be even simpler if each branch could only contain a label
-'''
 class SessionTypeGenerator:
-    def __init__(self, label_to_type, initial_state, **types):
-        self._label_to_type = label_to_type
-        self._elaborated_types = {
-            type_name: self._elaborate_top(type_name, t)
-            for type_name, t in types.items()
+    def __init__(self, initial_label):
+        self._labels = labels = {}
+        for cls in type(self).mro():
+            for name, attr in cls.__dict__.items():
+                l = getattr(attr, '_marked_', None)
+                if l is not None:
+                    assert l not in labels
+                    labels[l] = getattr(self, name)
+
+        assert initial_label in labels, (initial_label, labels)
+
+        self._next_idx = it.count()
+        # after a branch we are in many possible states
+        self._curr_state = set()
+        self._curr_cmd = None
+        self._label_to_state = {
+                l : i for l,i in zip(labels, self._next_idx)
         }
-        # state variables:
-        #   current_type :: macro level state
-        #   sequence_index :: position top level sequence
-        #   choice_index :: which choice we are currently taking
-        #   in_branch :: bool (note each type has at most one branch)
+        self._next_states = defaultdict(set)
+        self._elaborated_types = {
+            l : self._elaborate_label(l) for l in labels
+        }
 
     def offer(self,
             cmd_to_function: tp.Mapping[LabelT, tp.Callable],
             ):
-        self._log(Offer, cmd_to_function)
-        # if current_type and sequence index equal current elaborated state:
-        #     sequence_index = 0
-        #     in_branch = True
-        # Note by construction we know that:
-        #   in_branch = False and choice_index = 0
-        # offerings = {cmd: f() for cmd, f in cmd_to_function.items()}
+        idx = self._add_state(Offer, cmd_to_function)
 
     def choose(self, choice, cmd_to_function):
-        self._log(Choose, cmd_to_function)
-        # if current_type and sequence index equal current elaborated state:
-        #     sequence_index = 0
-        #     in_branch = True
-        #     choice_index = choice
-
+        idx = self._add_state(Choose, cmd_to_function)
+        print(idx, self._next_states[idx])
 
     def send(self, data):
-        self._log(Send(type(data)))
-        # extends the send mux
-        # if all state variable are in current elaborate state:
-        #     send mux should select data padded to correct size
-        #     if other side is ready:
-        #         sequence_index += 1
+        idx = self._add_state(Send(type(data)))
+        print('s', idx, self._next_states[idx])
 
     def recieve(self, data_t):
-        self._log(Recieve(data_t))
-        # slice the receive port for the correct data type
-        # if all state variable are in current elaborate state:
-        #     if data is valid:
-        #         sequence_index += 1
+        idx = self._add_state(Recieve(data_t))
+        print('r', idx, self._next_states[idx])
         return # sliced data_t
 
     def transition(self, label):
-        self._log(label)
-        # extend the next_state mux
-        # if all state variable are in current elaborate state then
-        #     current_type = label
-        #     sequence_index = 0
-        #     choice_index = 0
-        #     in_branch = False
+        self._add_state(label)
 
 
-    def _log(self, T, cmd_to_function=None):
+    def _set_next_state(self, next_state):
+        for s in self._curr_state:
+            self._next_states[s].add((next_state, self._curr_cmd))
+
+    def _add_state(self, T, cmd_to_function=None):
+        state = self._curr_state
         if cmd_to_function is None:
             assert isinstance(T, (Send, Recieve, LabelT)), T
+            if isinstance(T, LabelT):
+                self._set_next_state(self._label_to_state[T])
+                self._curr_state = set()
+                idx = None
+            else:
+                idx = next(self._next_idx)
+                self._set_next_state(idx)
+                self._curr_state = {idx}
             self._current_type.append(T)
-            self._elaborated_i += 1
+            self._curr_cmd = None # we dont need a command to transition
         elif issubclass(T, Offer):
             d = {}
+            idx = next(self._next_idx)
+            self._set_next_state(idx)
+            end_states = set()
             for cmd, function in cmd_to_function.items():
+                self._curr_state = {idx}
                 d[cmd] = self._elaborate_branch(cmd, function)
+                end_states |= self._curr_state
+            self._curr_state = end_states
             self._current_type.append(Offer(d))
         else:
             assert issubclass(T, Choose)
             d = {}
+            idx = next(self._next_idx)
+            self._set_next_state(idx)
+            end_states = set()
             for cmd, function in cmd_to_function.items():
+                self._curr_state = {idx}
                 d[cmd] = self._elaborate_branch(cmd, function)
+                end_states |= self._curr_state
+            self._curr_state = end_states
             self._current_type.append(Choose(d))
-            self._elaborated_i += 1
+        return idx
 
-
-    def _elaborate_top(self, type_name: str, t: SessionT) -> SessionT:
-        # elaborated state
+    def _elaborate_label(self, l: LabelT) -> SessionT:
+        self._curr_state = {self._label_to_state[l]}
         self._current_type = []
-        self._elaborated_t = inverse_look_up(self._label_to_type, t)
-        self._elaborated_i = 0
-        self._elaborated_c = 0
-        self._elaborated_b = False
-        method = getattr(self, type_name)
+        method = self._labels[l]
         method()
         return Sequence(*self._current_type)
 
-
     def _elaborate_branch(self, cmd, function) -> SessionT:
-        self._elaborated_i = 0
-        self._elaborated_c = cmd
-        self._elaborated_b = True
-        state = self._current_type
+        # I dont know if saving this is needed
+        old_cmd = self._curr_cmd
+        # this one definitely needs to be saved
+        old_t = self._current_type
+
+        self._curr_cmd = cmd
         self._current_type = []
         function()
-        rval = self._current_type
-        self._current_type = state
-        return Sequence(*rval)
+        branch_t = Sequence(*self._current_type)
 
+        self._curr_cmd = old_cmd
+        self._current_type = old_t
 
+        return branch_t
+
+def mark(t):
+    def add_mark(fn):
+        setattr(fn, '_marked_', t)
+        return fn
+    return add_mark
 
 class Controller(SessionTypeGenerator):
     def __init__(self):
         super().__init__(
-                LABEL_TO_T,
                 MemStates.MemInit,
-                MemInitT=MemInitT,
-                MemOffT=MemOffT,
-                MemOnT=MemOnT,
             )
 
+    @mark(MemStates.MemInit)
     def MemInitT(self):
         self.redundancy = self.recieve(RedundancyT)
         self.transition(MemStates.MemOff)
 
+    @mark(MemStates.MemOff)
     def MemOffT(self):
         def power_off():
             self.transition(MemStates.MemOff)
@@ -262,6 +239,7 @@ class Controller(SessionTypeGenerator):
             MemOffCmds.POWER_ON: power_on,
         })
 
+    @mark(MemStates.MemOn)
     def MemOnT(self):
         def power_off():
             self.transition(MemStates.MemOff)
