@@ -19,6 +19,9 @@ class SessionT(Iterable):
         else:
             return NotImplemented
 
+    def __hash__(self):
+        return sum(map(hash, self))
+
     def __ne__(self, other):
         eq = self == other
         if eq is NotImplemented:
@@ -105,7 +108,7 @@ class SessionTypeVisitor:
         '''
         Method for visiting leaf magma types
         '''
-        pass 
+        pass
 
     def visit_Sequence(self, T: Sequence) ->  None:
         for t in T:

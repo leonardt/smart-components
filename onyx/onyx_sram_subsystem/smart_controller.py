@@ -94,11 +94,13 @@ LABEL_TO_CMDS = {
 }
 
 
-
-
 class SessionTypeGenerator:
-    def __init__(self, initial_label):
-        self._labels = labels = {}
+    def __init__(self,
+            initial_label: LabelT,
+            declared_types: tp.Mapping[LabelT, SessionT]):
+        self._labels: tp.Mapping[LabelT, tp.Callable[[], None]] = {}
+        # because I cant do all in one line with annotated assignment
+        labels = self._labels
         for cls in type(self).mro():
             for name, attr in cls.__dict__.items():
                 l = getattr(attr, '_marked_', None)
@@ -107,7 +109,7 @@ class SessionTypeGenerator:
                     labels[l] = getattr(self, name)
 
         assert initial_label in labels, (initial_label, labels)
-
+        assert labels.keys() == declared_types.keys()
         self._next_idx = it.count()
         # after a branch we are in many possible states
         self._curr_state = set()
@@ -116,9 +118,18 @@ class SessionTypeGenerator:
                 l : i for l,i in zip(labels, self._next_idx)
         }
         self._next_states = defaultdict(set)
-        self._elaborated_types = {
+
+        self._declared_types: tp.Mapping[LabelT, SessionT] = declared_types
+
+        self._inferred_types: tp.Mapping[LabelT, SessionT] = {
             l : self._elaborate_label(l) for l in labels
         }
+        if self._inferred_types.keys() != declared_types.keys():
+            raise TypeError()
+
+        for l, t in self._inferred_types.items():
+            if t != declared_types[l]:
+                raise TypeError(f'Declared type for {l} ({t}) does not match inferred type {declared_types[l]}')
 
     def offer(self,
             cmd_to_function: tp.Mapping[LabelT, tp.Callable],
@@ -218,6 +229,7 @@ class Controller(SessionTypeGenerator):
     def __init__(self):
         super().__init__(
                 MemStates.MemInit,
+                LABEL_TO_T,
             )
 
     @mark(MemStates.MemInit)

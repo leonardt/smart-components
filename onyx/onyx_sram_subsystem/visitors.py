@@ -93,7 +93,6 @@ class AlwaysTransitionsVisitor(SessionTypeVisitor):
         self.always_transitions = True
 
 
-
 class LongestPathVisitor(SessionTypeVisitor):
     ''' Finds the longest path in a type '''
     def __init__(self):
