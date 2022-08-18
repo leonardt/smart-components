@@ -28,7 +28,7 @@ class StateMachine(CoopGenerator):
     def _decl_io(self, **kwargs):
         super()._decl_io(**kwargs)
         self.io += m.IO(
-            recieve=m.In(m.Bits[16]),
+            receive=m.In(m.Bits[16]),
             offer=m.In(m.Bits[4]),
             send=m.Out(m.Bits[16]),
             current_state=m.Out(m.Bits[2]),
@@ -59,65 +59,121 @@ class StateMachine(CoopGenerator):
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
-
         self.r_reg.I @= self.io.receive
         self.o_reg.I @= self.io.offer
         self.io.send @= self.s_reg.O
         
-        # State 0 (MemInit) => enable receive register r_reg and transition to
-        # state 1 (MemOff)
+        MemInit = 0
+        MemOff = 1
+        MemOn = 3
+        Send = 2
 
-        # State 1 (MemOff)
-        # Enable cmd reg (offer) (o_reg)
-        # If cmd == poweroff stay in memoff;
-        # if cmd == poweron => state 2 (send)
+        # State MemInit
+        # Enable receive register 'r_reg'
+        # GOTO MemOff
 
-        # State 3 (Send)
-        # send wakeAckT == enable s_reg (send register)
-        # transition to state 3 (memOn)
+        # State MemOff
+        # Enable offer/cmd reg 'o_reg'
+        # If cmd == poweroff => GOTO MemOff
+        # if cmd == poweron  => GOTO Send
 
-        # State 2 (MemOn)
-        # Enable o_reg (offer/cmd)
+        # State Send
+        # Enable send reg 's_reg'
+        # send wakeAckT
+        # GOTO MemOn
+
+        # State MemOn
+        # Enable offer/cmd reg 'o_reg'
         # if cmd == poweroff => goto memoff
         # if cmd == poweron => stay in state 2 (memon)
 
-        # Enable function for the o_reg
-        # if state==1 or state==3 then enable cmd reg
-        cur_state = self.state_reg.O
-        self.o_reg.CE @= ((cur_state == 1) | (cur_state == 3))
+        # Enable registers only where needed
 
-        # Enable function for the r_reg
-        # if state==0 then enable r_reg
-        self.r_reg.CE @= (cur_state == 0)
+        # Enable r_reg for state MemInit
+        self.r_reg.CE @= (cur_state == MemInit)
 
-        # Enable function for the s_reg
-        # if state==2 then enable s_reg
-        self.s_reg.CE @= (cur_state == 2)
-        
+        # Enable s_reg for state Send
+        self.s_reg.CE @= (cur_state == Send)
+
+        # Enable o_reg for states MemOff, MemOn
+        self.o_reg.CE @= ((cur_state == MemOff) | (cur_state == MemOn))
+
         # state update functions
         # if state == MemInit: state = MemOff
         # if cur_state == MemInit: cur_state = MemOff
         # if cur_state == 0: cur_state = 1
-        MemInit = 0
-        MemOff = 1
-        Send = 2
-        MemOn = 3
 
+        cur_state = self.state_reg.O
+        cmd = self.o_reg.O
+        rcv = self.r_reg.O
 
         @m.inline_combinational()
         def controller():
-            if cur_state == 0:
-                next_state = 1
+            if cur_state == MemInit:
+                # FIXME
+                if receive_redundancy: next_state = MemOff
 
-            elif cur_state == 1:
-                next_state = 1
+            elif cur_state == MemOff:
+                if   cmd == PowerOff:  next_state = MemOff
+                elif cmd == PowerOn:   next_state = Send
 
-            elif cur_state == 2:
-                next_state = 1
+            elif cur_state == Send:
+                send_WakeAckT;         next_state = MemOn
 
-            elif cur_state == 3:
-                next_state = 1
+            elif cur_state == MemOn:
+                if   cmd == PowerOff:  next_state = MemOff
+                elif cmd == PowerOn:   next_state = MemOn
 
-            elif cur_state == 1:
+            self.state_reg.I @= next_state
 
-        
+        def receive_redundancy():
+            # WRITEME
+            # ?? return (rcv == RedundancyT)
+            return True
+
+        def send_wakeAckT():
+            # WRITEME
+            return True
+
+
+##############################################################################
+        def controller_alt():
+            next_state = state_machine([
+                MemInit, receive_redundancy,  MemOff,
+
+                MemOff, cmd == PowerOff,      MemOff,
+                MemOff, cmd == PowerOn,       Send  ,
+
+                Send,   cmd == send_wakeAckT, MemOn ,
+
+                MemOn,  cmd == PowerOff,      MemOff,
+                MemOn,  cmd == PowerOn,       MemOn ,
+            ])
+            self.state_reg.I @= next_state
+
+
+
+        def state_machine (smlist):
+            # assert n_elements%3 == 0?
+            while smlist:
+                state1 = smlist.pop(0); # assert type int?
+                action = smlist.pop(0); # assert type bool or func?
+                state2 = smlist.pop(0); # assert type int?
+                if cur_state == state1:
+                    # DO NOT eval action unless we are in appropriate state!
+                    if type(action) != bool: action = action()
+                    if action:
+                        return state2
+
+            # ERROR? ASSERT?
+            return state1
+##############################################################################
+
+
+def test():
+    sm = StateMachine()
+    print("foo ehlloo foozzz")
+    print(sm.num_states)
+    print("bar byebye baxzzzz")
+
+test()
