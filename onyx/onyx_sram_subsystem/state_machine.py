@@ -72,31 +72,52 @@ class StateMachine(CoopGenerator):
         # If cmd == poweroff stay in memoff;
         # if cmd == poweron => state 2 (send)
 
-        # State 2 (Send)
+        # State 3 (Send)
         # send wakeAckT == enable s_reg (send register)
         # transition to state 3 (memOn)
 
-        # State 3 (MemOn)
+        # State 2 (MemOn)
         # Enable o_reg (offer/cmd)
         # if cmd == poweroff => goto memoff
-        # if cmd == poweron => stay in state 3 (memon)
+        # if cmd == poweron => stay in state 2 (memon)
 
         # Enable function for the o_reg
         # if state==1 or state==3 then enable cmd reg
-        curstate = self.state_reg.O
-        self.o_reg.CE @= ((curstate == 1) | (curstate == 3))
+        cur_state = self.state_reg.O
+        self.o_reg.CE @= ((cur_state == 1) | (cur_state == 3))
 
         # Enable function for the r_reg
         # if state==0 then enable r_reg
-        self.r_reg.CE @= (curstate == 0)
+        self.r_reg.CE @= (cur_state == 0)
 
         # Enable function for the s_reg
         # if state==2 then enable s_reg
-        self.s_reg.CE @= (curstate == 2)
+        self.s_reg.CE @= (cur_state == 2)
         
         # state update functions
         # if state == MemInit: state = MemOff
-        # if curstate == MemInit: curstate = MemOff
-        if curstate == 0: curstate = 1
+        # if cur_state == MemInit: cur_state = MemOff
+        # if cur_state == 0: cur_state = 1
+        MemInit = 0
+        MemOff = 1
+        Send = 2
+        MemOn = 3
+
+
+        @m.inline_combinational()
+        def controller():
+            if cur_state == 0:
+                next_state = 1
+
+            elif cur_state == 1:
+                next_state = 1
+
+            elif cur_state == 2:
+                next_state = 1
+
+            elif cur_state == 3:
+                next_state = 1
+
+            elif cur_state == 1:
 
         
