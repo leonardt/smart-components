@@ -56,6 +56,11 @@ class StateMachine(CoopGenerator):
             has_enable=True,
         )()
 
+        self.redundancy_reg = m.Register(
+            T=m.Bits[16],
+            has_enable=True,
+        )()
+
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
@@ -91,6 +96,7 @@ class StateMachine(CoopGenerator):
 
         # Enable r_reg for state MemInit
         self.r_reg.CE @= (cur_state == MemInit)
+        self.redundancy_reg.CE @= (cur_state == MemInit)
 
         # Enable s_reg for state Send
         self.s_reg.CE @= (cur_state == Send)
@@ -109,64 +115,70 @@ class StateMachine(CoopGenerator):
 
         @m.inline_combinational()
         def controller():
+
+            send_data = m.Bits[16](0)
+            redundancy_data = m.Bits[16](0)
+
             if cur_state == MemInit:
-                # FIXME
-                if receive_redundancy: next_state = MemOff
+                redundancy_data = rcv; next_state = MemOff
 
             elif cur_state == MemOff:
                 if   cmd == PowerOff:  next_state = MemOff
                 elif cmd == PowerOn:   next_state = Send
 
             elif cur_state == Send:
-                send_WakeAckT;         next_state = MemOn
+                send_data = m.Bits[16](1) # Send WakeAckT
+                next_state = MemOn
 
             elif cur_state == MemOn:
                 if   cmd == PowerOff:  next_state = MemOff
                 elif cmd == PowerOn:   next_state = MemOn
 
             self.state_reg.I @= next_state
+            self.s_reg.I @= send_data
+            self.redundancy_reg.I @= redundancy_data
 
-        def receive_redundancy():
-            # WRITEME
-            # ?? return (rcv == RedundancyT)
-            return True
-
-        def send_wakeAckT():
-            # WRITEME
-            return True
+#         def receive_redundancy():
+#             # WRITEME
+#             # ?? return (rcv == RedundancyT)
+#             return True
+# 
+#         def send_wakeAckT():
+#             # WRITEME
+#             return True
 
 
 ##############################################################################
-        def controller_alt():
-            next_state = state_machine([
-                MemInit, receive_redundancy,  MemOff,
-
-                MemOff, cmd == PowerOff,      MemOff,
-                MemOff, cmd == PowerOn,       Send  ,
-
-                Send,   cmd == send_wakeAckT, MemOn ,
-
-                MemOn,  cmd == PowerOff,      MemOff,
-                MemOn,  cmd == PowerOn,       MemOn ,
-            ])
-            self.state_reg.I @= next_state
-
-
-
-        def state_machine (smlist):
-            # assert n_elements%3 == 0?
-            while smlist:
-                state1 = smlist.pop(0); # assert type int?
-                action = smlist.pop(0); # assert type bool or func?
-                state2 = smlist.pop(0); # assert type int?
-                if cur_state == state1:
-                    # DO NOT eval action unless we are in appropriate state!
-                    if type(action) != bool: action = action()
-                    if action:
-                        return state2
-
-            # ERROR? ASSERT?
-            return state1
+#         def controller_alt():
+#             next_state = state_machine([
+#                 MemInit, receive_redundancy,  MemOff,
+# 
+#                 MemOff, cmd == PowerOff,      MemOff,
+#                 MemOff, cmd == PowerOn,       Send  ,
+# 
+#                 Send,   cmd == send_wakeAckT, MemOn ,
+# 
+#                 MemOn,  cmd == PowerOff,      MemOff,
+#                 MemOn,  cmd == PowerOn,       MemOn ,
+#             ])
+#             self.state_reg.I @= next_state
+# 
+# 
+# 
+#         def state_machine (smlist):
+#             # assert n_elements%3 == 0?
+#             while smlist:
+#                 state1 = smlist.pop(0); # assert type int?
+#                 action = smlist.pop(0); # assert type bool or func?
+#                 state2 = smlist.pop(0); # assert type int?
+#                 if cur_state == state1:
+#                     # DO NOT eval action unless we are in appropriate state!
+#                     if type(action) != bool: action = action()
+#                     if action:
+#                         return state2
+# 
+#             # ERROR? ASSERT?
+#             return state1
 ##############################################################################
 
 
