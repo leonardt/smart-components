@@ -232,21 +232,13 @@ class StateMachine(CoopGenerator):
 #             return state1
 ##############################################################################
 
-
-def test():
-    sm = StateMachine()
-    print("foo ehlloo foozzz")
-    print(sm.num_states)
-    print("bar byebye baxzzzz")
-
 # FIFO = make_FIFO(HSFloatIn, HSFloatOut, 4)
 # m.compile("examples/build/FIFO", FIFO, output="coreir-verilog")
 
 def show_verilog():
     FSM = StateMachine()
-    m.compile("tmpdir/FOOOO", FSM, output="coreir-verilog")
-    with open('tmpdir/FOOOO.v', 'r') as f:
-        print(f.read())
+    m.compile("tmpdir/fsm0", FSM, output="coreir-verilog")
+    with open('tmpdir/fsm0.v', 'r') as f: print(f.read())
 
 show_verilog()
 
