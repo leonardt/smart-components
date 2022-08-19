@@ -36,26 +36,32 @@ class StateMachine(CoopGenerator):
 
     def _decl_components(self, **kwargs):
         super()._decl_components(**kwargs)
+
+        # StateMachine.Register_inst0?
         self.state_reg = m.Register(
             init=m.Bits[2](0),
             has_enable=False,
         )()
 
+        # StateMachine.Register_inst1?
         self.s_reg = m.Register(
             T=m.Bits[16],
             has_enable=True,
         )()
 
+        # StateMachine.Register_inst2?
         self.r_reg = m.Register(
             T=m.Bits[16],
             has_enable=True,
         )()
 
+        # StateMachine.Register_inst3?
         self.o_reg = m.Register(
             T=m.Bits[4],
             has_enable=True,
         )()
 
+        # StateMachine.Register_inst4
         self.redundancy_reg = m.Register(
             T=m.Bits[16],
             has_enable=True,
@@ -68,10 +74,29 @@ class StateMachine(CoopGenerator):
         self.o_reg.I @= self.io.offer
         self.io.send @= self.s_reg.O
         
-        MemInit = 0
-        MemOff = 1
-        MemOn = 3
-        Send = 2
+
+
+
+
+##############################################################################
+        # FIXME added inits to avoid errors
+
+        # % python state_machine_debug.py |& grep driven
+        # ERROR:magma:StateMachine.Register_inst0.I not driven (state_reg?)
+        # ERROR:magma:StateMachine.Register_inst1.I not driven (s_reg?)
+        # ERROR:magma:StateMachine.Register_inst4.I not driven (redundancy_reg)
+        
+        # self.state_reg.I      @= m.Bits[2](0)  # StateMachine.Register_inst4
+        # self.s_reg.I          @= m.Bits[16](0) # StateMachine.Register_inst4
+        # self.redundancy_reg.I @= m.Bits[16](0) # StateMachine.Register_inst4
+##############################################################################
+
+
+
+
+
+        ################################################################
+        # This is the state machine we want to implement
 
         # State MemInit
         # Enable receive register 'r_reg'
@@ -91,51 +116,77 @@ class StateMachine(CoopGenerator):
         # Enable offer/cmd reg 'o_reg'
         # if cmd == poweroff => goto memoff
         # if cmd == poweron => stay in state 2 (memon)
+        ################################################################
 
-        # Enable registers only where needed
+        # States
+        MemInit = m.Bits[2](0)
+        MemOff  = m.Bits[2](1)
+        Send    = m.Bits[2](2)
+        MemOn   = m.Bits[2](3)
 
-        # Enable r_reg for state MemInit
-        self.r_reg.CE @= (cur_state == MemInit)
+        # Commands
+        PowerOff = m.Bits[4](0)
+        PowerOn  = m.Bits[4](1)
+
+        # Convenient shortcuts
+        cur_state = self.state_reg.O
+        cmd       = self.o_reg.O
+        rcv       = self.r_reg.O
+
+        # Enable registers only where needed (why? maybe not strictly necessary?)
+        # TODO can try wiring all enables to 1'b1 and see if anything changes...?
+
+        # MemInit uses r_reg, redundancy reg
+        self.r_reg.CE          @= (cur_state == MemInit)
         self.redundancy_reg.CE @= (cur_state == MemInit)
 
-        # Enable s_reg for state Send
-        self.s_reg.CE @= (cur_state == Send)
+        # Send uses s_reg
+        self.s_reg.CE          @= (cur_state == Send)
 
-        # Enable o_reg for states MemOff, MemOn
-        self.o_reg.CE @= ((cur_state == MemOff) | (cur_state == MemOn))
+        # MemOff, MemOn use o_reg
+        self.o_reg.CE          @= ((cur_state == MemOff) | (cur_state == MemOn))
 
         # state update functions
         # if state == MemInit: state = MemOff
         # if cur_state == MemInit: cur_state = MemOff
         # if cur_state == 0: cur_state = 1
 
-        cur_state = self.state_reg.O
-        cmd = self.o_reg.O
-        rcv = self.r_reg.O
+        # So, @mydecorator is just an easier way of saying
+        # myfunc = mydecorator(myfunc)
+
+        # Note inline_combinational() is not very robust i.e.
+        # very particular about indentation even on comments, also
+        # should avoid e.g. one-line if-then ('if a: b=1'),
+        # multiple statements on one line separated by semicolon etc.
 
         @m.inline_combinational()
         def controller():
 
-            send_data = m.Bits[16](0)
+            # Dummy values for now
+            send_data       = m.Bits[16](0)
             redundancy_data = m.Bits[16](0)
+            WakeAcktT       = m.Bits[16](1)
 
             if cur_state == MemInit:
                 redundancy_data = rcv; next_state = MemOff
 
-            elif cur_state == MemOff:
-                if   cmd == PowerOff:  next_state = MemOff
-                elif cmd == PowerOn:   next_state = Send
+            elif ((cur_state == MemOff) & (cmd == PowerOff)):
+                next_state = MemOff
+            elif ((cur_state == MemOff) & (cmd == PowerOn )):
+                next_state = Send
 
             elif cur_state == Send:
-                send_data = m.Bits[16](1) # Send WakeAckT
+                send_data  = WakeAcktT
                 next_state = MemOn
 
-            elif cur_state == MemOn:
-                if   cmd == PowerOff:  next_state = MemOff
-                elif cmd == PowerOn:   next_state = MemOn
+            elif ((cur_state == MemOn) & (cmd == PowerOff)):
+                next_state = MemOff
+            elif ((cur_state == MemOn) & (cmd == PowerOn )):
+                next_state = MemOn
 
-            self.state_reg.I @= next_state
-            self.s_reg.I @= send_data
+            # Wire up our shortcuts
+            self.state_reg.I      @= next_state
+            self.s_reg.I          @= send_data
             self.redundancy_reg.I @= redundancy_data
 
 #         def receive_redundancy():
@@ -188,4 +239,15 @@ def test():
     print(sm.num_states)
     print("bar byebye baxzzzz")
 
-test()
+# FIFO = make_FIFO(HSFloatIn, HSFloatOut, 4)
+# m.compile("examples/build/FIFO", FIFO, output="coreir-verilog")
+
+def show_verilog():
+    FSM = StateMachine()
+    m.compile("tmpdir/FOOOO", FSM, output="coreir-verilog")
+    with open('tmpdir/FOOOO.v', 'r') as f:
+        print(f.read())
+
+show_verilog()
+
+
