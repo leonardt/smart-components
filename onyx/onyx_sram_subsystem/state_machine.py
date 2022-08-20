@@ -200,36 +200,38 @@ class StateMachine(CoopGenerator):
 
 
 ##############################################################################
-#         def controller_alt():
-#             next_state = state_machine([
-#                 MemInit, receive_redundancy,  MemOff,
-# 
-#                 MemOff, cmd == PowerOff,      MemOff,
-#                 MemOff, cmd == PowerOn,       Send  ,
-# 
-#                 Send,   cmd == send_wakeAckT, MemOn ,
-# 
-#                 MemOn,  cmd == PowerOff,      MemOff,
-#                 MemOn,  cmd == PowerOn,       MemOn ,
-#             ])
-#             self.state_reg.I @= next_state
-# 
-# 
-# 
-#         def state_machine (smlist):
-#             # assert n_elements%3 == 0?
-#             while smlist:
-#                 state1 = smlist.pop(0); # assert type int?
-#                 action = smlist.pop(0); # assert type bool or func?
-#                 state2 = smlist.pop(0); # assert type int?
-#                 if cur_state == state1:
-#                     # DO NOT eval action unless we are in appropriate state!
-#                     if type(action) != bool: action = action()
-#                     if action:
-#                         return state2
-# 
-#             # ERROR? ASSERT?
-#             return state1
+# UNUSED (for now)
+##############################################################################
+        def controller_alt():
+            next_state = state_machine([
+                MemInit, receive_redundancy,  MemOff,
+
+                MemOff, cmd == PowerOff,      MemOff,
+                MemOff, cmd == PowerOn,       Send  ,
+
+                Send,   cmd == send_wakeAckT, MemOn ,
+
+                MemOn,  cmd == PowerOff,      MemOff,
+                MemOn,  cmd == PowerOn,       MemOn ,
+            ])
+            self.state_reg.I @= next_state
+
+
+
+        def state_machine (smlist):
+            # assert n_elements%3 == 0?
+            while smlist:
+                state1 = smlist.pop(0); # assert type int?
+                action = smlist.pop(0); # assert type bool or func?
+                state2 = smlist.pop(0); # assert type int?
+                if cur_state == state1:
+                    # DO NOT eval action unless we are in appropriate state!
+                    if type(action) != bool: action = action()
+                    if action:
+                        return state2
+
+            # ERROR? ASSERT?
+            return state1
 ##############################################################################
 
 # FIFO = make_FIFO(HSFloatIn, HSFloatOut, 4)
