@@ -162,6 +162,10 @@ class StateMachine(CoopGenerator):
         @m.inline_combinational()
         def controller():
 
+            # ehere is a comment
+
+
+
             # Dummy values for now
             send_data       = m.Bits[16](0)
             redundancy_data = m.Bits[16](0)
@@ -242,6 +246,119 @@ def show_verilog():
     m.compile("tmpdir/fsm0", FSM, output="coreir-verilog")
     with open('tmpdir/fsm0.v', 'r') as f: print(f.read())
 
+# show_verilog()
+print("==============================================================================")
+print("okay so that was the verilog")
+print("==============================================================================")
+
+import fault
+
+def test_state_machine_fault():
+    
+    # generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
+    # Definition = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)
+    # tester = fault.Tester(Definition, Definition.CLK)
+
+    # States
+    MemInit = m.Bits[2](0)
+    MemOff  = m.Bits[2](1)
+    Send    = m.Bits[2](2)
+    MemOn   = m.Bits[2](3)
+    
+    # Commands
+    PowerOff = m.Bits[4](0)
+    PowerOn  = m.Bits[4](1)
+
+    Definition = StateMachine()
+    tester = fault.Tester(Definition, Definition.CLK)
+
+    print("beep boop testing state_machine circuit")
+    
+    # See _devl_io_ in StateMachine() for 'current_state'
+    tester.circuit.current_state.expect(MemInit) # yes
+    print("beep boop successful booted in state MemInit maybe")
+
+    # if cur_state == MemInit:
+    #     redundancy_data = rcv; next_state = MemOff
+
+    tester.step(1)
+    print("beep boop and now we should be in state Memoff")
+    tester.circuit.current_state.expect(MemOff)
+
+    # print("beep boop redundancy data is now", tester.circuit.redundancy_reg.O)
+    # NOPE
+
+    # print("beep boop redundancy data is now", tester.circuit.Register_inst4.O)
+    # beep boop redundancy data is now <fault.wrapper.PortWrapper object at 0x7f8f42444fa0>
+
+    print("beep boop redundancy data is now")
+    # tester.print("O=%d\n", tester.circuit.config_reg.conf_reg.O)
+    tester.print("O=%d\n", tester.circuit.Register_inst4.O)
+    # <STDOUT>
+    # O=0
+    # </STDOUT>
+    # <STDERR>
+
+    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O)
+    # TypeError: %d format: a number is required, not PortWrapper
+
+    print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O.peek())
+
+
+
+
+
+
+    print("\n----------------------")
+    print("beep boop now we fail")
+    tester.circuit.current_state.expect(MemOn) # no
+
+
+
+    # Build:
+    # opcode = ConfigReg(name="config_reg")(io.config_data, CE=io.config_en)
+
+    # Test:
+    # tester.circuit.config_reg.conf_reg.value = i
+    # tester.step(2)
+    # tester.circuit.config_reg.conf_reg.O.expect(i)
+
+
+
+
+
+    ################################################################
+
+    # tester.compile_and_run("verilator", flags=["-Wno-fatal"])
+
+    # Fault supports peeking, expecting, and printing internal
+    # signals. For the verilator target, you should use the keyword
+    # argument magma_opts with "verilator_debug" set to true. This
+    # will cause coreir to compile the verilog with the required debug
+    # comments. Example:
+
+    # tester.compile_and_run("verilator", flags=["-Wno-fatal"], 
+    # magma_opts={"verilator_debug": True}, directory="build")
+    tester.compile_and_run(
+        "verilator",
+        flags=["-Wno-fatal"],
+        magma_opts={"verilator_debug": True},
+        directory="tmpdir",
+    )
+    
+
+
+
+
 show_verilog()
+exit()
+
+print("==============================================================================")
+print("okay so that was the verilog")
+print("==============================================================================")
 
 
+
+
+
+test_state_machine_fault()
