@@ -128,6 +128,7 @@ class StateMachine(CoopGenerator):
             send_data       = m.Bits[16](0)
             redundancy_data = m.Bits[16](0)
             WakeAcktT       = m.Bits[16](1)
+            data_from_mem   = m.Bits[16](0)
 
             # State MemInit
             if cur_state == self.MemInit:
@@ -139,7 +140,7 @@ class StateMachine(CoopGenerator):
                 next_state = self.MemOff
 
             elif ((cur_state == self.MemOff) & (cmd == PowerOn )):
-                send_data  = WakeAcktT      # Send(WakeAck)
+                send_data  = WakeAcktT      # Send(WakeAck) [to client requesting power-on]
                 next_state = self.MemOn
 
             # State MemOn
@@ -151,17 +152,15 @@ class StateMachine(CoopGenerator):
 
             # READ: get address from client, send back data from mem
             elif ((cur_state == self.MemOn) & (cmd == Read )):
-                # TODO Receive(Addr)
-                # TODO Send(Data)
+                addr = self.r_reg.O       # Receive(Addr) [from client requesting read]
+                send_data = data_from_mem # Send(Data)    [to requesting client]
                 next_state = self.MemOn
 
-            # READ: get address and data from client, send to memory
+            # WRITE: get address and data from client, send to memory
             # messages from client arrive via r_reg (receive reg)
             elif ((cur_state == self.MemOn) & (cmd == Write )):
-                # TODO Receive(Addr)
-                addr = self.r_reg.O
-                # TODO Receive(Data)
-                data = self.r_reg.O
+                addr = self.r_reg.O      # Receive(Addr)
+                data = self.r_reg.O      # Receive(Data)
                 next_state = self.MemOn
 
 
