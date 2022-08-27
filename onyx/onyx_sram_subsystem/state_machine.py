@@ -162,27 +162,27 @@ class StateMachine(CoopGenerator):
         @m.inline_combinational()
         def controller():
 
-            # ehere is a comment
-
-
-
             # Dummy values for now
             send_data       = m.Bits[16](0)
             redundancy_data = m.Bits[16](0)
             WakeAcktT       = m.Bits[16](1)
 
+            # State MemInit
             if cur_state == MemInit:
                 redundancy_data = rcv; next_state = MemOff
 
+            # State MemOff
             elif ((cur_state == MemOff) & (cmd == PowerOff)):
                 next_state = MemOff
             elif ((cur_state == MemOff) & (cmd == PowerOn )):
                 next_state = Send
 
+            # State Send
             elif cur_state == Send:
                 send_data  = WakeAcktT
                 next_state = MemOn
 
+            # State MemOn
             elif ((cur_state == MemOn) & (cmd == PowerOff)):
                 next_state = MemOff
             elif ((cur_state == MemOn) & (cmd == PowerOn )):
@@ -193,20 +193,42 @@ class StateMachine(CoopGenerator):
             self.s_reg.I          @= send_data
             self.redundancy_reg.I @= redundancy_data
 
-#         def receive_redundancy():
-#             # WRITEME
-#             # ?? return (rcv == RedundancyT)
-#             return True
-# 
-#         def send_wakeAckT():
-#             # WRITEME
-#             return True
-
-
 ##############################################################################
 # UNUSED (for now)
 ##############################################################################
+
+        # @m.inline_combinational()
         def controller_alt():
+
+            def state_machine (smlist):
+                # assert n_elements%3 == 0?
+                while smlist:
+                    state1 = smlist.pop(0); # assert type int?
+                    action = smlist.pop(0); # assert type bool or func?
+                    state2 = smlist.pop(0); # assert type int?
+                    if cur_state == state1:
+                        # DO NOT eval action unless we are in appropriate state!
+                        if type(action) != bool: action = action()
+                        if action:
+                            return state2
+
+                # ERROR? ASSERT?
+                return state1
+
+            # Dummy values for now
+
+            send_data       = m.Bits[16](0)
+            redundancy_data = m.Bits[16](0)
+            WakeAcktT       = m.Bits[16](1)
+
+            def receive_redundancy():
+                redundancy_data = rcv 
+                return True
+
+            def send_wakeAckT():
+                send_data  = WakeAcktT
+                return True
+
             next_state = state_machine([
                 MemInit, receive_redundancy,  MemOff,
 
@@ -218,24 +240,19 @@ class StateMachine(CoopGenerator):
                 MemOn,  cmd == PowerOff,      MemOff,
                 MemOn,  cmd == PowerOn,       MemOn ,
             ])
-            self.state_reg.I @= next_state
+
+            # Wire up our shortcuts
+            self.state_reg.I      @= next_state
+            self.s_reg.I          @= send_data
+            self.redundancy_reg.I @= redundancy_data
 
 
 
-        def state_machine (smlist):
-            # assert n_elements%3 == 0?
-            while smlist:
-                state1 = smlist.pop(0); # assert type int?
-                action = smlist.pop(0); # assert type bool or func?
-                state2 = smlist.pop(0); # assert type int?
-                if cur_state == state1:
-                    # DO NOT eval action unless we are in appropriate state!
-                    if type(action) != bool: action = action()
-                    if action:
-                        return state2
 
-            # ERROR? ASSERT?
-            return state1
+
+
+
+
 ##############################################################################
 
 # FIFO = make_FIFO(HSFloatIn, HSFloatOut, 4)
@@ -243,8 +260,8 @@ class StateMachine(CoopGenerator):
 
 def show_verilog():
     FSM = StateMachine()
-    m.compile("tmpdir/fsm0", FSM, output="coreir-verilog")
-    with open('tmpdir/fsm0.v', 'r') as f: print(f.read())
+    m.compile("steveri/tmpdir/fsm0", FSM, output="coreir-verilog")
+    with open('steveri/tmpdir/fsm0.v', 'r') as f: print(f.read())
 
 # show_verilog()
 print("==============================================================================")
