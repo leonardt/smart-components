@@ -29,11 +29,8 @@ class StateMachine(CoopGenerator):
         nbits = 2
         self.MemInit = m.Bits[nbits](0)
         self.MemOff  = m.Bits[nbits](1)
-        self.Send    = m.Bits[nbits](2)
+        self.Send    = m.Bits[nbits](2) # currently unused maybe
         self.MemOn   = m.Bits[nbits](3)
-
-
-
 
     def _decl_io(self, **kwargs):
         super()._decl_io(**kwargs)
@@ -123,51 +120,55 @@ class StateMachine(CoopGenerator):
         @m.inline_combinational()
         def controller():
 
-            # Dummy values for now
-            addr            = m.Bits[16](0)
-            send_data       = m.Bits[16](0)
-            redundancy_data = m.Bits[16](0)
+            addr_to_mem     = m.Bits[16](0) # changes on read, write request
+            data_from_mem   = m.Bits[16](0) # magically changes when addr_to_mem changes
+            data_to_client  = m.Bits[16](0)
+            redundancy_data = m.Bits[16](0) # changes when we enter meminit state
+
+            # Dummy value for now
             WakeAcktT       = m.Bits[16](1)
-            data_from_mem   = m.Bits[16](0)
 
             # State MemInit
             if cur_state == self.MemInit:
-                redundancy_data = self.r_reg.O    # Receive redundancy: output of receive reg => input of redundancy r
+                # Receive redundancy: output of receive reg => input of redundancy reg
+                redundancy_data = self.r_reg.O
                 next_state = self.MemOff
 
             # State MemOff
             elif ((cur_state == self.MemOff) & (cmd == PowerOff)):
                 next_state = self.MemOff
 
-            elif ((cur_state == self.MemOff) & (cmd == PowerOn )):
-                send_data  = WakeAcktT      # Send(WakeAck) [to client requesting power-on]
+            elif ((cur_state == self.MemOff) & (cmd == PowerOn)):
+                # Send(WakeAck) [to client requesting power-on]
+                data_to_client = WakeAcktT
                 next_state = self.MemOn
 
             # State MemOn
             elif ((cur_state == self.MemOn) & (cmd == PowerOff)):
                 next_state = self.MemOff
 
-            elif ((cur_state == self.MemOn) & (cmd == Idle )):
+            elif ((cur_state == self.MemOn) & (cmd == Idle)):
                 next_state = self.MemOn
 
             # READ: get address from client, send back data from mem
-            elif ((cur_state == self.MemOn) & (cmd == Read )):
-                addr = self.r_reg.O       # Receive(Addr) [from client requesting read]
-                send_data = data_from_mem # Send(Data)    [to requesting client]
+            # Assumes data_from_mem magically appears when addr changes (I guess)
+            elif ((cur_state == self.MemOn) & (cmd == Read)):
+                addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
+                data_to_client = data_from_mem # Send(Data)    [to requesting client]
                 next_state = self.MemOn
 
             # WRITE: get address and data from client, send to memory
             # messages from client arrive via r_reg (receive reg)
-            elif ((cur_state == self.MemOn) & (cmd == Write )):
-                addr = self.r_reg.O      # Receive(Addr)
-                data = self.r_reg.O      # Receive(Data)
+            elif ((cur_state == self.MemOn) & (cmd == Write)):
+                addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
+                data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
                 next_state = self.MemOn
 
-
+            # else: cur_state == cur_state
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
-            self.s_reg.I          @= send_data
+            self.s_reg.I          @= data_to_client
             self.redundancy_reg.I @= redundancy_data
 
 
