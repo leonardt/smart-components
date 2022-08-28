@@ -45,38 +45,40 @@ class StateMachine(CoopGenerator):
     def _decl_components(self, **kwargs):
         super()._decl_components(**kwargs)
 
-        # StateMachine.Register_inst0?
+        # "state" reg
         self.state_reg = m.Register(
             init=m.Bits[2](0),
             has_enable=False,
         )()
+        self.state_reg.name = "state_reg"
 
         # "send" reg
-        # StateMachine.Register_inst1?
         self.s_reg = m.Register(
             T=m.Bits[16],
             has_enable=True,
         )()
+        self.s_reg.name = "s_reg"
 
         # "receive" reg
-        # StateMachine.Register_inst2?
         self.r_reg = m.Register(
             T=m.Bits[16],
             has_enable=True,
         )()
+        self.r_reg.name = "r_reg"
 
         # "offer" (cmd) reg
-        # StateMachine.Register_inst3?
         self.o_reg = m.Register(
             T=m.Bits[4],
             has_enable=True,
         )()
+        self.o_reg.name = "o_reg"
 
-        # StateMachine.Register_inst4
+        # "redundancy" reg
         self.redundancy_reg = m.Register(
             T=m.Bits[16],
             has_enable=True,
         )()
+        self.redundancy_reg.name = "redundancy_reg"
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
