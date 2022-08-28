@@ -185,11 +185,14 @@ class StateMachine(CoopGenerator):
 # FIFO = make_FIFO(HSFloatIn, HSFloatOut, 4)
 # m.compile("examples/build/FIFO", FIFO, output="coreir-verilog")
 
-def show_verilog():
+def build_verilog():
     FSM = StateMachine()
     m.compile("steveri/tmpdir/fsm", FSM, output="coreir-verilog")
+
+def show_verilog():
     with open('steveri/tmpdir/fsm.v', 'r') as f: print(f.read())
 
+build_verilog()
 # show_verilog()
 print("==============================================================================")
 print("okay so that was the verilog")
