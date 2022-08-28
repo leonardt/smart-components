@@ -20,18 +20,21 @@ class CoopGenerator(m.Generator2):
     def _decl_components(self, **kwargs): pass
     def _connect(self, **kwargs): pass
 
+class State():
+    #----------------------------------
+    num_states = 4; i=0
+    nbits = (num_states-1).bit_length()
+    #----------------------------------
+    MemInit = m.Bits[nbits](i); i=i+1
+    MemOff  = m.Bits[nbits](i); i=i+1
+    Send    = m.Bits[nbits](i); i=i+1 # currently unused maybe
+    MemOn   = m.Bits[nbits](i); i=i+1
+
 class StateMachine(CoopGenerator):
+
     def _decl_attrs(self, **kwargs):
         super()._decl_attrs(**kwargs)
-
-        # States
-        i = 0
-        self.num_states = 4
-        nbits = (self.num_states-1).bit_length()
-        self.MemInit = m.Bits[nbits](i); i=i+1
-        self.MemOff  = m.Bits[nbits](i); i=i+1
-        self.Send    = m.Bits[nbits](i); i=i+1 # currently unused maybe
-        self.MemOn   = m.Bits[nbits](i); i=i+1
+        self.num_states = State.num_states
 
     def _decl_io(self, **kwargs):
         super()._decl_io(**kwargs)
@@ -105,14 +108,15 @@ class StateMachine(CoopGenerator):
         # TODO can try wiring all enables to 1'b1 and see if anything changes...?
 
         # MemInit uses r_reg, redundancy reg
-        self.r_reg.CE          @= (cur_state == self.MemInit)
-        self.redundancy_reg.CE @= (cur_state == self.MemInit)
+        self.r_reg.CE          @= (cur_state == State.MemInit)
+        self.redundancy_reg.CE @= (cur_state == State.MemInit)
+
 
         # Send uses s_reg
-        self.s_reg.CE          @= (cur_state == self.Send)
+        self.s_reg.CE          @= (cur_state == State.Send)
 
         # MemOff, MemOn use o_reg
-        self.o_reg.CE          @= ((cur_state == self.MemOff) | (cur_state == self.MemOn))
+        self.o_reg.CE          @= ((cur_state == State.MemOff) | (cur_state == State.MemOn))
 
         # So, @mydecorator is just an easier way of saying myfunc = mydecorator(myfunc)
 
@@ -133,40 +137,40 @@ class StateMachine(CoopGenerator):
             WakeAcktT       = m.Bits[16](1)
 
             # State MemInit
-            if cur_state == self.MemInit:
+            if cur_state == State.MemInit:
                 # Receive redundancy: output of receive reg => input of redundancy reg
                 redundancy_data = self.r_reg.O
-                next_state = self.MemOff
+                next_state = State.MemOff
 
             # State MemOff
-            elif ((cur_state == self.MemOff) & (cmd == PowerOff)):
-                next_state = self.MemOff
+            elif ((cur_state == State.MemOff) & (cmd == PowerOff)):
+                next_state = State.MemOff
 
-            elif ((cur_state == self.MemOff) & (cmd == PowerOn)):
+            elif ((cur_state == State.MemOff) & (cmd == PowerOn)):
                 # Send(WakeAck) [to client requesting power-on]
                 data_to_client = WakeAcktT
-                next_state = self.MemOn
+                next_state = State.MemOn
 
             # State MemOn
-            elif ((cur_state == self.MemOn) & (cmd == PowerOff)):
-                next_state = self.MemOff
+            elif ((cur_state == State.MemOn) & (cmd == PowerOff)):
+                next_state = State.MemOff
 
-            elif ((cur_state == self.MemOn) & (cmd == Idle)):
-                next_state = self.MemOn
+            elif ((cur_state == State.MemOn) & (cmd == Idle)):
+                next_state = State.MemOn
 
             # READ: get address from client, send back data from mem
             # Assumes data_from_mem magically appears when addr changes (I guess)
-            elif ((cur_state == self.MemOn) & (cmd == Read)):
+            elif ((cur_state == State.MemOn) & (cmd == Read)):
                 addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
                 data_to_client = data_from_mem # Send(Data)    [to requesting client]
-                next_state = self.MemOn
+                next_state = State.MemOn
 
             # WRITE: get address and data from client, send to memory
             # messages from client arrive via r_reg (receive reg)
-            elif ((cur_state == self.MemOn) & (cmd == Write)):
+            elif ((cur_state == State.MemOn) & (cmd == Write)):
                 addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
                 data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
-                next_state = self.MemOn
+                next_state = State.MemOn
 
             # else: cur_state == cur_state
 
@@ -191,20 +195,16 @@ print("=========================================================================
 print("okay so that was the verilog")
 print("==============================================================================")
 
+
+#==============================================================================
+#==============================================================================
+#==============================================================================
 import fault
 
 def test_state_machine_fault():
     
-    # generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
-    # Definition = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)
-    # tester = fault.Tester(Definition, Definition.CLK)
+    def step(): tester.step(2)
 
-    # States
-    MemInit = m.Bits[2](0)
-    MemOff  = m.Bits[2](1)
-    Send    = m.Bits[2](2)
-    MemOn   = m.Bits[2](3)
-    
     # Commands
     PowerOff = m.Bits[4](0)
     PowerOn  = m.Bits[4](1)
@@ -212,57 +212,26 @@ def test_state_machine_fault():
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
 
-    print("beep boop testing state_machine circuit")
+    tester.print("beep boop testing state_machine circuit\n")
     
-    # See _devl_io_ in StateMachine() for 'current_state'
-    tester.circuit.current_state.expect(MemInit) # yes
-    print("beep boop successful booted in state MemInit maybe")
+    tester.circuit.current_state.expect(State.MemInit)
+    tester.print("beep boop successfully booted in state MemInit maybe\n")
 
-    # if cur_state == MemInit:
-    #     redundancy_data = rcv; next_state = MemOff
+    step()
 
-    tester.step(1)
-
-    # Note steveri your clever little comments aren't happening when you think they are :/
-    # Should use testser.print(), not print(). Dumbhead.
     tester.print("beep boop and now we should be in state Memoff\n")
+    tester.circuit.current_state.expect(State.MemOff)
 
-    tester.circuit.current_state.expect(MemOff)
-
-    # print("beep boop redundancy data is now", tester.circuit.redundancy_reg.O)
-    # NOPE
-
-    # print("beep boop redundancy data is now", tester.circuit.Register_inst4.O)
-    # beep boop redundancy data is now <fault.wrapper.PortWrapper object at 0x7f8f42444fa0>
-
-    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O)
-    # TypeError: %d format: a number is required, not PortWrapper
-
-    # uh...tester.this-or-that commands don't run until later, after verilator compile etc.
-    # print("beep boop redundancy data is now")
-    # tester.print("O=%d\n", tester.circuit.config_reg.conf_reg.O)
-
-    # tester.print("O=%d\n", tester.circuit.Register_inst4.O)
+    # Check contents of redundancy_reg
     tester.print("beep boop redundancy data is now O=%d\n", tester.circuit.redundancy_reg.O)
-    # tester.print("O=%d\n", tester.circuit.Register_inst0.O)
+    tester.circuit.redundancy_reg.O.expect(0)
+    tester.print("beep boop passed initial redundancy data check\n")
 
+    tester.print("----------------------\n")
+    tester.print("beep boop ...and now we fail\n")
 
-    # <STDOUT>
-    # O=0
-    # </STDOUT>
-    # <STDERR>
-
-    # peek() is not a thing, this never works
-    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O.peek())
-
-
-
-
-
-
-    print("\n----------------------")
-    print("beep boop now we fail")
-    tester.circuit.current_state.expect(MemOn) # no
+    tester.step(2)
+    tester.circuit.current_state.expect(State.MemOn) # no
 
 
 
