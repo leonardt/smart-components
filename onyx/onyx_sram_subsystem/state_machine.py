@@ -222,7 +222,11 @@ def test_state_machine_fault():
     #     redundancy_data = rcv; next_state = MemOff
 
     tester.step(1)
-    print("beep boop and now we should be in state Memoff")
+
+    # Note steveri your clever little comments aren't happening when you think they are :/
+    # Should use testser.print(), not print(). Dumbhead.
+    tester.print("beep boop and now we should be in state Memoff\n")
+
     tester.circuit.current_state.expect(MemOff)
 
     # print("beep boop redundancy data is now", tester.circuit.redundancy_reg.O)
@@ -231,11 +235,15 @@ def test_state_machine_fault():
     # print("beep boop redundancy data is now", tester.circuit.Register_inst4.O)
     # beep boop redundancy data is now <fault.wrapper.PortWrapper object at 0x7f8f42444fa0>
 
-    print("beep boop redundancy data is now")
+    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O)
+    # TypeError: %d format: a number is required, not PortWrapper
+
+    # uh...tester.this-or-that commands don't run until later, after verilator compile etc.
+    # print("beep boop redundancy data is now")
     # tester.print("O=%d\n", tester.circuit.config_reg.conf_reg.O)
 
     # tester.print("O=%d\n", tester.circuit.Register_inst4.O)
-    tester.print("O=%d\n", tester.circuit.redundancy_reg.O)
+    tester.print("beep boop redundancy data is now O=%d\n", tester.circuit.redundancy_reg.O)
     # tester.print("O=%d\n", tester.circuit.Register_inst0.O)
 
 
@@ -244,12 +252,8 @@ def test_state_machine_fault():
     # </STDOUT>
     # <STDERR>
 
-    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O)
-    # TypeError: %d format: a number is required, not PortWrapper
-
+    # peek() is not a thing, this never works
     # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O.peek())
-    # print("beep boop redundancy data is now %d" % tester.circuit.redundancy_reg.O.peek())
-    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst0.O.peek())
 
 
 
