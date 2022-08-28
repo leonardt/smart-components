@@ -180,11 +180,6 @@ class StateMachine(CoopGenerator):
             self.redundancy_reg.I @= redundancy_data
 
 
-##############################################################################
-
-# FIFO = make_FIFO(HSFloatIn, HSFloatOut, 4)
-# m.compile("examples/build/FIFO", FIFO, output="coreir-verilog")
-
 def build_verilog():
     FSM = StateMachine()
     m.compile("steveri/tmpdir/fsm", FSM, output="coreir-verilog")
@@ -193,10 +188,11 @@ def show_verilog():
     with open('steveri/tmpdir/fsm.v', 'r') as f: print(f.read())
 
 build_verilog()
+
 # show_verilog()
-print("==============================================================================")
-print("okay so that was the verilog")
-print("==============================================================================")
+# print("==============================================================================")
+# print("okay so that was the verilog")
+# print("==============================================================================")
 
 
 #==============================================================================
@@ -233,8 +229,17 @@ def test_state_machine_fault():
     tester.print("----------------------\n")
     tester.print("beep boop ...and now we fail\n")
 
-    tester.step(2)
+    # Set command to PowerOn?
+    # tester.circuit.o_reg.I = m.Bits[4](1)
+    tester.circuit.offer = m.Bits[4](1)
+    tester.print("beep boop 0 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+
+    step()
+    tester.print("beep boop 2 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
     tester.circuit.current_state.expect(State.MemOn) # no
+    # Works to here
+
+    tester.circuit.current_state.expect(State.MemInit) # no
 
 
 
