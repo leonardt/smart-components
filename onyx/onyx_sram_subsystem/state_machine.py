@@ -214,7 +214,6 @@ build_verilog()
 #==============================================================================
 #==============================================================================
 import fault
-
 def test_state_machine_fault():
     
     # Convenient little shortcut
@@ -239,44 +238,54 @@ def test_state_machine_fault():
     # Check contents of redundancy_reg
     # For now, our circuit sets it to zero and we can check that
     # Later, it will be an unknown quantity supplied by the SRAM
-    tester.print("beep boop redundancy data is now O=%d\n", tester.circuit.redundancy_reg.O)
+    tester.print("beep boop redundancy data is now Command %d\n", tester.circuit.redundancy_reg.O)
     tester.circuit.redundancy_reg.O.expect(0)
     tester.print("beep boop passed initial redundancy data check\n")
 
     ########################################################################
-    # Check transition MemOff => MemOn on command PowerOn
+    tester.print("beep boop -----------------------------------------------")
+    tester.print("beep boop Check transition MemOff => MemOn on command PowerOn")
 
     # FIXME why do we need two (4) steps?
     # I guess...one step for command to propagate from o_reg.I to o_reg.O
     # Plus one step for state to move from MemOff to MemOn...?
 
     tester.circuit.offer = Command.PowerOn
-    tester.print("beep boop 0 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
     step()
-    tester.print("beep boop 1 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    tester.print("beep boop 1 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
     step()
-    tester.print("beep boop 2 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    tester.print("beep boop 2 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
     tester.circuit.current_state.expect(State.MemOn)
 
     ########################################################################
-    # Check transition MemOn => MemOn on command Idle
+    tester.print("beep boop -----------------------------------------------")
+    tester.print("beep boop Check transition MemOn => MemOn on command Idle")
 
     tester.circuit.offer = Command.Idle
-    tester.print("beep boop 0 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
     step()
-    tester.print("beep boop 1 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
-#     step()
-#     tester.print("beep boop 2 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    tester.print("beep boop 1 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
+    # step()
+    # tester.print("beep boop 2 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
     tester.circuit.current_state.expect(State.MemOn)
 
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------")
+    tester.print("beep boop Check transition MemOn => MemOn on command Read")
 
+    tester.circuit.offer = Command.Read
+    tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
+    step()
+    tester.print("beep boop 1 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
+    tester.circuit.current_state.expect(State.MemOn)
 
-    # Works to here
 
     #     # FIXME don't know how to dump stdout except to fail here
     #     tester.circuit.current_state.expect(State.MemInit) # no
 
-
+    # If test succeeds, log (stdout) is not displayed :(
+    # So we do this:
     with open('tmpdir/obj_dir/StateMachine.log', 'r') as f: print(f.read())
 
     ########################################################################
@@ -310,18 +319,4 @@ def test_state_machine_fault():
         directory="tmpdir",
     )
     
-
-
-
-
-# show_verilog()
-# 
-# print("==============================================================================")
-# print("okay so that was the verilog")
-# print("==============================================================================")
-
-
-
-
-
 test_state_machine_fault()
