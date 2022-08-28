@@ -20,6 +20,20 @@ class CoopGenerator(m.Generator2):
     def _decl_components(self, **kwargs): pass
     def _connect(self, **kwargs): pass
 
+class Command():
+    #----------------------------------
+    num_commands = 5; i=0
+    nbits = (num_commands-1).bit_length()
+
+    # For compatibility w/ prev version
+    nbits = 4  # Good for up to 16 commands
+    #----------------------------------
+    PowerOff = m.Bits[nbits](i); i=i+1
+    PowerOn  = m.Bits[nbits](i); i=i+1 # not used
+    Read     = m.Bits[nbits](i); i=i+1
+    Write    = m.Bits[nbits](i); i=i+1
+    Idle     = m.Bits[nbits](i); i=i+1
+
 class State():
     #----------------------------------
     num_states = 4; i=0
@@ -49,7 +63,8 @@ class StateMachine(CoopGenerator):
         super()._decl_components(**kwargs)
 
         # "state" reg
-        nbits = (self.num_states-1).bit_length()
+        # nbits = (self.num_states-1).bit_length()
+        nbits = State.nbits
         self.state_reg = m.Register(
             init=m.Bits[nbits](0),
             has_enable=False,
@@ -91,13 +106,13 @@ class StateMachine(CoopGenerator):
         self.o_reg.I @= self.io.offer
         self.io.send @= self.s_reg.O
         
-        # Commands
-        nbits = 4   # Good for up to 16 commands
-        PowerOff = m.Bits[nbits](0)
-        PowerOn  = m.Bits[nbits](1) # not used
-        Read     = m.Bits[nbits](2)
-        Write    = m.Bits[nbits](3)
-        Idle     = m.Bits[nbits](4)
+#         # Commands
+#         nbits = 4   # Good for up to 16 commands
+#         PowerOff = m.Bits[nbits](0)
+#         PowerOn  = m.Bits[nbits](1) # not used
+#         Read     = m.Bits[nbits](2)
+#         Write    = m.Bits[nbits](3)
+#         Idle     = m.Bits[nbits](4)
 
         # Convenient shortcuts
         cur_state = self.state_reg.O
@@ -143,31 +158,31 @@ class StateMachine(CoopGenerator):
                 next_state = State.MemOff
 
             # State MemOff
-            elif ((cur_state == State.MemOff) & (cmd == PowerOff)):
+            elif ((cur_state == State.MemOff) & (cmd == Command.PowerOff)):
                 next_state = State.MemOff
 
-            elif ((cur_state == State.MemOff) & (cmd == PowerOn)):
+            elif ((cur_state == State.MemOff) & (cmd == Command.PowerOn)):
                 # Send(WakeAck) [to client requesting power-on]
                 data_to_client = WakeAcktT
                 next_state = State.MemOn
 
             # State MemOn
-            elif ((cur_state == State.MemOn) & (cmd == PowerOff)):
+            elif ((cur_state == State.MemOn) & (cmd == Command.PowerOff)):
                 next_state = State.MemOff
 
-            elif ((cur_state == State.MemOn) & (cmd == Idle)):
+            elif ((cur_state == State.MemOn) & (cmd == Command.Idle)):
                 next_state = State.MemOn
 
             # READ: get address from client, send back data from mem
             # Assumes data_from_mem magically appears when addr changes (I guess)
-            elif ((cur_state == State.MemOn) & (cmd == Read)):
+            elif ((cur_state == State.MemOn) & (cmd == Command.Read)):
                 addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
                 data_to_client = data_from_mem # Send(Data)    [to requesting client]
                 next_state = State.MemOn
 
             # WRITE: get address and data from client, send to memory
             # messages from client arrive via r_reg (receive reg)
-            elif ((cur_state == State.MemOn) & (cmd == Write)):
+            elif ((cur_state == State.MemOn) & (cmd == Command.Write)):
                 addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
                 data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
                 next_state = State.MemOn
@@ -202,71 +217,92 @@ import fault
 
 def test_state_machine_fault():
     
+    # Convenient little shortcut
+    # - tester.step(1) is one clock edge
+    # - step(1) = one complete clock cycle = two clock edges (one pos, one neg)
     def step(): tester.step(2)
 
-    # Commands
-    PowerOff = m.Bits[4](0)
-    PowerOn  = m.Bits[4](1)
-
+    # Tester setup
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
-
     tester.print("beep boop testing state_machine circuit\n")
     
+    # Start in state MemInit
     tester.circuit.current_state.expect(State.MemInit)
     tester.print("beep boop successfully booted in state MemInit maybe\n")
 
+    # Test transition MemInit => MemOff
     step()
-
     tester.print("beep boop and now we should be in state Memoff\n")
     tester.circuit.current_state.expect(State.MemOff)
 
     # Check contents of redundancy_reg
+    # For now, our circuit sets it to zero and we can check that
+    # Later, it will be an unknown quantity supplied by the SRAM
     tester.print("beep boop redundancy data is now O=%d\n", tester.circuit.redundancy_reg.O)
     tester.circuit.redundancy_reg.O.expect(0)
     tester.print("beep boop passed initial redundancy data check\n")
 
-    tester.print("----------------------\n")
-    tester.print("beep boop ...and now we fail\n")
+    ########################################################################
+    # Check transition MemOff => MemOn on command PowerOn
 
-    # Set command to PowerOn?
-    # tester.circuit.o_reg.I = m.Bits[4](1)
-    tester.circuit.offer = m.Bits[4](1)
+    # FIXME why do we need two (4) steps?
+    # I guess...one step for command to propagate from o_reg.I to o_reg.O
+    # Plus one step for state to move from MemOff to MemOn...?
+
+    tester.circuit.offer = Command.PowerOn
     tester.print("beep boop 0 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
-
+    step()
+    tester.print("beep boop 1 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
     step()
     tester.print("beep boop 2 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
-    tester.circuit.current_state.expect(State.MemOn) # no
+    tester.circuit.current_state.expect(State.MemOn)
+
+    ########################################################################
+    # Check transition MemOn => MemOn on command Idle
+
+    tester.circuit.offer = Command.Idle
+    tester.print("beep boop 0 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    step()
+    tester.print("beep boop 1 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+#     step()
+#     tester.print("beep boop 2 o_reg OUT is now O=%d\n", tester.circuit.o_reg.O)
+    tester.circuit.current_state.expect(State.MemOn)
+
+
+
     # Works to here
 
-    tester.circuit.current_state.expect(State.MemInit) # no
+    #     # FIXME don't know how to dump stdout except to fail here
+    #     tester.circuit.current_state.expect(State.MemInit) # no
 
 
+    with open('tmpdir/obj_dir/StateMachine.log', 'r') as f: print(f.read())
 
-    # Build:
-    # opcode = ConfigReg(name="config_reg")(io.config_data, CE=io.config_en)
-
-    # Test:
-    # tester.circuit.config_reg.conf_reg.value = i
-    # tester.step(2)
-    # tester.circuit.config_reg.conf_reg.O.expect(i)
-
-
-
-
+    ########################################################################
+    # Note the newlines do not print to the log file so you have to do
+    # something like
+    #    % python state_machine.py | sed 's/beep/\
+    #    beep/g'
+    #
+    # or maybe
+    #    % python state_machine.py && cat tmpdir/obj_dir/StateMachine.log | sed 's/beep/\
+    #    beep/g'
+    #
+    # BEFORE: beep boop testing state_machine circuitbeep boop successfully booted in state
+    # AFTER:
+    #    beep boop testing state_machine circuit
+    #    beep boop successfully booted in state
 
     ################################################################
+    # Fault supports peeking, expecting, and printing internal signals.
+    # For the verilator target, you should use the keyword argument
+    # magma_opts with "verilator_debug" set to true. This will cause
+    # coreir to compile the verilog with the required debug comments.
+    #
+    #    tester.compile_and_run("verilator", flags=["-Wno-fatal"], 
+    #        magma_opts={"verilator_debug": True}, directory="build")
 
-    # tester.compile_and_run("verilator", flags=["-Wno-fatal"])
-
-    # Fault supports peeking, expecting, and printing internal
-    # signals. For the verilator target, you should use the keyword
-    # argument magma_opts with "verilator_debug" set to true. This
-    # will cause coreir to compile the verilog with the required debug
-    # comments. Example:
-
-    # tester.compile_and_run("verilator", flags=["-Wno-fatal"], 
-    # magma_opts={"verilator_debug": True}, directory="build")
     tester.compile_and_run(
         "verilator",
         flags=["-Wno-fatal"],
