@@ -46,8 +46,9 @@ class StateMachine(CoopGenerator):
         super()._decl_components(**kwargs)
 
         # "state" reg
+        nbits = (self.num_states-1).bit_length()
         self.state_reg = m.Register(
-            init=m.Bits[2](0),
+            init=m.Bits[nbits](0),
             has_enable=False,
         )()
         self.state_reg.name = "state_reg"
@@ -232,7 +233,12 @@ def test_state_machine_fault():
 
     print("beep boop redundancy data is now")
     # tester.print("O=%d\n", tester.circuit.config_reg.conf_reg.O)
-    tester.print("O=%d\n", tester.circuit.Register_inst4.O)
+
+    # tester.print("O=%d\n", tester.circuit.Register_inst4.O)
+    tester.print("O=%d\n", tester.circuit.redundancy_reg.O)
+    # tester.print("O=%d\n", tester.circuit.Register_inst0.O)
+
+
     # <STDOUT>
     # O=0
     # </STDOUT>
@@ -241,7 +247,9 @@ def test_state_machine_fault():
     # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O)
     # TypeError: %d format: a number is required, not PortWrapper
 
-    print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O.peek())
+    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst4.O.peek())
+    # print("beep boop redundancy data is now %d" % tester.circuit.redundancy_reg.O.peek())
+    # print("beep boop redundancy data is now %d" % tester.circuit.Register_inst0.O.peek())
 
 
 
@@ -289,12 +297,11 @@ def test_state_machine_fault():
 
 
 
-show_verilog()
-exit()
-
-print("==============================================================================")
-print("okay so that was the verilog")
-print("==============================================================================")
+# show_verilog()
+# 
+# print("==============================================================================")
+# print("okay so that was the verilog")
+# print("==============================================================================")
 
 
 
