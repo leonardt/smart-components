@@ -23,14 +23,15 @@ class CoopGenerator(m.Generator2):
 class StateMachine(CoopGenerator):
     def _decl_attrs(self, **kwargs):
         super()._decl_attrs(**kwargs)
-        self.num_states = 4
 
         # States
-        nbits = 2
-        self.MemInit = m.Bits[nbits](0)
-        self.MemOff  = m.Bits[nbits](1)
-        self.Send    = m.Bits[nbits](2) # currently unused maybe
-        self.MemOn   = m.Bits[nbits](3)
+        i = 0
+        self.num_states = 4
+        nbits = (self.num_states-1).bit_length()
+        self.MemInit = m.Bits[nbits](i); i=i+1
+        self.MemOff  = m.Bits[nbits](i); i=i+1
+        self.Send    = m.Bits[nbits](i); i=i+1 # currently unused maybe
+        self.MemOn   = m.Bits[nbits](i); i=i+1
 
     def _decl_io(self, **kwargs):
         super()._decl_io(**kwargs)
