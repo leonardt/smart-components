@@ -223,10 +223,10 @@ def test_state_machine_fault():
 
     def check_transition(cmd, state, nsteps):
         tester.circuit.offer = cmd
-        tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
+        tester.print("beep boop begin: o_reg OUT = command %d\n", tester.circuit.o_reg.O)
         for i in range(nsteps):
             step()
-            fmt=f"beep boop {i+1} o_reg OUT is now Command %d\n"
+            fmt=f"beep boop step{i+1}: o_reg OUT = command %d\n"
             tester.print(fmt, tester.circuit.o_reg.O)
 
         tester.circuit.current_state.expect(state)
@@ -237,27 +237,30 @@ def test_state_machine_fault():
     tester = fault.Tester(Definition, Definition.CLK)
     tester.print("beep boop testing state_machine circuit\n")
     
+    ########################################################################
     # Start in state MemInit
     tester.circuit.current_state.expect(State.MemInit)
+    tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop successfully booted in state MemInit maybe\n")
 
-    # Test transition MemInit => MemOff
+    ########################################################################
     step()
+    tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop and now we should be in state Memoff\n")
     tester.circuit.current_state.expect(State.MemOff)
 
     # Check contents of redundancy_reg
     # For now, our circuit sets it to zero and we can check that
     # Later, it will be an unknown quantity supplied by the SRAM
-    tester.print("beep boop redundancy data is now Command %d\n", tester.circuit.redundancy_reg.O)
+    tester.print("beep boop received redundancy data '%d'\n", tester.circuit.redundancy_reg.O)
     tester.circuit.redundancy_reg.O.expect(0)
     tester.print("beep boop passed initial redundancy data check\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOff => MemOff on command PowerOff\n")
-    tester.print("beep boop TBD\n")
-
+    check_transition(Command.PowerOff, State.MemOff, nsteps=1)
+    tester.print("beep boop successfully arrived in state MemOff\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
@@ -267,34 +270,32 @@ def test_state_machine_fault():
     # I guess...one step for command to propagate from o_reg.I to o_reg.O
     # Plus one step for state to move from MemOff to MemOn...?
     check_transition(Command.PowerOn, State.MemOn, nsteps=2)
-
+    tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Idle\n")
     check_transition(Command.Idle, State.MemOn, nsteps=1)
+    tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Read\n")
     check_transition(Command.Read, State.MemOn, nsteps=1)
-
-    #     # FIXME don't know how to dump stdout except to fail here
-    #     tester.circuit.current_state.expect(State.MemInit) # no
-
-    # If test succeeds, log (stdout) is not displayed :(
-    # So we do this:
-    with open('tmpdir/obj_dir/StateMachine.log', 'r') as f: print(f.read())
+    tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
-    tester.print("beep boop TBD\n")
+    check_transition(Command.Write, State.MemOn, nsteps=1)
+    tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
-    tester.print("beep boop TBD\n")
+    # FIXME why does this take two steps???
+    check_transition(Command.PowerOff, State.MemOff, nsteps=2)
+    tester.print("beep boop successfully arrived in state MemOff\n")
 
 
 
@@ -337,4 +338,15 @@ def test_state_machine_fault():
         directory="tmpdir",
     )
     
+    #     # FIXME don't know how to dump stdout except to fail here
+    #     tester.circuit.current_state.expect(State.MemInit) # no
+
+    # If test succeeds, log (stdout) is not displayed :(
+    # So we do this:
+    with open('tmpdir/obj_dir/StateMachine.log', 'r') as f: print(f.read())
+
+
+
+
+
 test_state_machine_fault()
