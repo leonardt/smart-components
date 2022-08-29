@@ -221,6 +221,17 @@ def test_state_machine_fault():
     # - step(1) = one complete clock cycle = two clock edges (one pos, one neg)
     def step(): tester.step(2)
 
+    def check_transition(cmd, state, nsteps):
+        tester.circuit.offer = cmd
+        tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
+        for i in range(nsteps):
+            step()
+            fmt=f"beep boop {i+1} o_reg OUT is now Command %d\n"
+            tester.print(fmt, tester.circuit.o_reg.O)
+
+        tester.circuit.current_state.expect(state)
+
+
     # Tester setup
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
@@ -243,43 +254,30 @@ def test_state_machine_fault():
     tester.print("beep boop passed initial redundancy data check\n")
 
     ########################################################################
-    tester.print("beep boop -----------------------------------------------")
-    tester.print("beep boop Check transition MemOff => MemOn on command PowerOn")
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOff => MemOff on command PowerOff\n")
+    tester.print("beep boop TBD\n")
 
-    # FIXME why do we need two (4) steps?
+
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOff => MemOn on command PowerOn\n")
+
+    # FIXME why do we need two (4) steps for this transition?
     # I guess...one step for command to propagate from o_reg.I to o_reg.O
     # Plus one step for state to move from MemOff to MemOn...?
+    check_transition(Command.PowerOn, State.MemOn, nsteps=2)
 
-    tester.circuit.offer = Command.PowerOn
-    tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    step()
-    tester.print("beep boop 1 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    step()
-    tester.print("beep boop 2 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    tester.circuit.current_state.expect(State.MemOn)
 
     ########################################################################
-    tester.print("beep boop -----------------------------------------------")
-    tester.print("beep boop Check transition MemOn => MemOn on command Idle")
-
-    tester.circuit.offer = Command.Idle
-    tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    step()
-    tester.print("beep boop 1 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    # step()
-    # tester.print("beep boop 2 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    tester.circuit.current_state.expect(State.MemOn)
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOn => MemOn on command Idle\n")
+    check_transition(Command.Idle, State.MemOn, nsteps=1)
 
     ########################################################################
-    tester.print("beep boop -----------------------------------------------")
-    tester.print("beep boop Check transition MemOn => MemOn on command Read")
-
-    tester.circuit.offer = Command.Read
-    tester.print("beep boop 0 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    step()
-    tester.print("beep boop 1 o_reg OUT is now Command %d\n", tester.circuit.o_reg.O)
-    tester.circuit.current_state.expect(State.MemOn)
-
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOn => MemOn on command Read\n")
+    check_transition(Command.Read, State.MemOn, nsteps=1)
 
     #     # FIXME don't know how to dump stdout except to fail here
     #     tester.circuit.current_state.expect(State.MemInit) # no
@@ -287,6 +285,26 @@ def test_state_machine_fault():
     # If test succeeds, log (stdout) is not displayed :(
     # So we do this:
     with open('tmpdir/obj_dir/StateMachine.log', 'r') as f: print(f.read())
+
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
+    tester.print("beep boop TBD\n")
+
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
+    tester.print("beep boop TBD\n")
+
+
+
+
+
+
+
+
+
+
 
     ########################################################################
     # Note the newlines do not print to the log file so you have to do
