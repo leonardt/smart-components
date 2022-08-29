@@ -1,9 +1,20 @@
+DBG=True
+if DBG:
+    import sys
+    def debug(m):
+        print(m); sys.stdout.flush()
+else:
+    def debug(m): pass
+
+import sys
+debug("Begin importing python packages...")
 import magma as m
 import hwtypes as ht
 from mock_mem import SRAMDMR
 from session import Offer, Choose, Send, Recieve, Sequence
 from session import SessionTypeVisitor, SessionT, LabelT
 from util import inverse_look_up, BiMap
+debug("* Done importing python packages...")
 
 class CoopGenerator(m.Generator2):
     def __init__(self, **kwargs):
@@ -202,7 +213,7 @@ def build_verilog():
 def show_verilog():
     with open('steveri/tmpdir/fsm.v', 'r') as f: print(f.read())
 
-build_verilog()
+# build_verilog()
 
 # show_verilog()
 # print("==============================================================================")
@@ -216,6 +227,8 @@ build_verilog()
 import fault
 def test_state_machine_fault():
     
+    debug("Build and test state machine")
+
     # Convenient little shortcut
     # - tester.step(1) is one clock edge
     # - step(1) = one complete clock cycle = two clock edges (one pos, one neg)
@@ -298,15 +311,6 @@ def test_state_machine_fault():
     tester.print("beep boop successfully arrived in state MemOff\n")
 
 
-
-
-
-
-
-
-
-
-
     ########################################################################
     # Note the newlines do not print to the log file so you have to do
     # something like
@@ -331,22 +335,16 @@ def test_state_machine_fault():
     #    tester.compile_and_run("verilator", flags=["-Wno-fatal"], 
     #        magma_opts={"verilator_debug": True}, directory="build")
 
+    debug("* Begin verilator compile-and-run")
     tester.compile_and_run(
         "verilator",
         flags=["-Wno-fatal"],
         magma_opts={"verilator_debug": True},
         directory="tmpdir",
     )
-    
-    #     # FIXME don't know how to dump stdout except to fail here
-    #     tester.circuit.current_state.expect(State.MemInit) # no
-
-    # If test succeeds, log (stdout) is not displayed :(
-    # So we do this:
-    with open('tmpdir/obj_dir/StateMachine.log', 'r') as f: print(f.read())
-
-
-
-
+    # Note - If test succeeds, log (stdout) is not displayed :(
+    print("""To read fault-test log:
+    cat tmpdir/obj_dir/StateMachine.log | sed 's/beep/\\
+beep/g'    """)
 
 test_state_machine_fault()
