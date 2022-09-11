@@ -14,7 +14,7 @@ README='''
 beep/g'
 
 # To compare state machine verilog vs. prev successful run(s)
-    diff ref/StateMachine.v build/StateMachine.v && echo PASS || echo FAIL
+    diff ref/StateMachine.v tmpdir/StateMachine.v && echo PASS || echo FAIL
 
 # To automatically run, see output, and compare to prev
     ./test_state_machine.sh
@@ -81,17 +81,25 @@ class State():
 
 class MessageQueue():
     '''
-    Want to be able to do something like:
-        self.CommandFromClient=MessageQueue("o_reg")
-        self.o_reg = self.CommandFromClient.Reg
-        self.o_reg.I @= self.io.offer
-        cmd       = self.o_reg.O
-        self.o_reg.CE          @= ((cur_state == State.MemOff) | (cur_state == State.MemOn))
+    Examples:
+      OLD: o_reg = m.Register(T=m.Bits[nbits], has_enable=True)(); o_reg.name = "o_reg"
+      NEW: self.CommandFromClient = MessageQueue("o_reg", nbits=4)
+    
+      OLD: cmd = self.o_reg.O
+      NEW: cmd = self.CommandFromClient.O
+
+      OLD: self.o_reg.I             @= self.io.offer
+      NEW: self.CommandFromClient.I @= self.io.offer
+
+      OLD: self.o_reg.CE @= ((cur_state == State.MemOff) | (cur_state == State.MemOn))
+      NEW: self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
+
     '''
 
     def __init__(self, name, nbits):
         self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
         self.Reg.name = name
+
         self.I = self.Reg.I
         self.O = self.Reg.O
 
@@ -101,7 +109,6 @@ class MessageQueue():
         # self.Reg.CE @= cond
         # q.enable(cond)
         self.Reg.CE @= cond
-
 
 
 class StateMachine(CoopGenerator):
@@ -122,43 +129,48 @@ class StateMachine(CoopGenerator):
     def _decl_components(self, **kwargs):
         super()._decl_components(**kwargs)
 
-        # "state" reg
-        # nbits = (self.num_states-1).bit_length()
-        nbits = State.nbits
+        # state reg holds current state number
         self.state_reg = m.Register(
-            init=m.Bits[nbits](0),
+            init=m.Bits[State.nbits](0),
             has_enable=False,
         )()
         self.state_reg.name = "state_reg"
 
-        # Remaining regs all follow this same pattern
-        def reg(name, nbits):
-            r = m.Register(T=m.Bits[nbits], has_enable=True)()
-            r.name = name
-            return r
+        # redundancy reg holds redundancy data from ?client? for future ref
+        # self.redundancy_reg = reg("redundancy_reg", nbits=16); # "redundancy" reg
+        self.redundancy_reg = m.Register(
+            T=m.Bits[16],
+            has_enable=True,
+        )()
+        self.redundancy_reg.name = "redundancy_reg"
+
+        # Instead of registers to tansfer information,
+        # now have message queues.
+        # Coming soon: ready-valid protocol
+
+        # Note: Redundancy info and address info both come in via DataFrom queue
+        # self.DataToClient   = MessageQueue("s_reg", nbits=16);  # Was: s_reg
+        self.DataToClient   = MessageQueue("DataToClient", nbits=16);  # Was: s_reg
+        self.DataFromClient = MessageQueue("r_reg", nbits=16); # Was: r_reg
 
 
-        # s="send", r="receive", o="offer" (command)
-        self.s_reg = reg("s_reg", nbits=16)
-        self.r_reg = reg("r_reg", nbits=16)
-
+        # self.o_reg = reg("o_reg", nbits=4)
         self.CommandFromClient = MessageQueue("o_reg", nbits=4)
-        self.o_reg = self.CommandFromClient.Reg
 
-        self.redundancy_reg = reg("redundancy_reg", nbits=16); # "redundancy" reg
 
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
-        self.r_reg.I @= self.io.receive
 
+        # self.r_reg.I @= self.io.receive
+        self.DataFromClient.I @= self.io.receive
 
         # self.o_reg.I @= self.io.offer
         self.CommandFromClient.I @= self.io.offer
 
-
-        self.io.send @= self.s_reg.O
+        # self.io.send @= self.s_reg.O
+        self.io.send @= self.DataToClient.O
         
 
 
@@ -174,7 +186,7 @@ class StateMachine(CoopGenerator):
         # Convenient shortcuts
         cur_state = self.state_reg.O
         cmd       = self.CommandFromClient.O
-        rcv_in    = self.r_reg.O
+        rcv_in    = self.DataFromClient.O
 
         # Enable registers only where needed (why? maybe not strictly necessary?)
         # TODO can try wiring all enables to 1'b1 and see if anything changes...?
@@ -195,26 +207,16 @@ class StateMachine(CoopGenerator):
 
         use_reg(self.redundancy_reg, State.MemInit)
 
-        use_reg(self.r_reg, State.MemInit)
-        use_reg(self.s_reg, State.Send)
+        # use_reg(self.r_reg, State.MemInit)
+        # FIXME isn't r_reg also used in MemWrite and MemRead states? For address?
+        self.DataFromClient.enable(cur_state, State.MemInit)
+
+        # use_reg(self.s_reg, State.Send)
+        self.DataToClient.enable(cur_state, State.Send)
 
 
-#         # use_reg(self.o_reg, State.MemOff, State.MemOn)
-#         def use_reg2(q, state, *more_states):
-#             cond = (cur_state == state)
-#             for s in more_states: cond = cond | (cur_state == s)
-#             # reg.CE @= cond
-#             q.enable(cond)
-
-        # use_reg2(self.CommandFromClient, State.MemOff, State.MemOn)
-
+        # States that use CommandFromClient queue
         self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
-
-
-#         cond = (cur_state == State.MemOff) | (cur_state == State.MemOn)
-#         self.CommandFromClient.hookup(cond)
-
-
 
         # So, @mydecorator is just an easier way of saying myfunc = mydecorator(myfunc)
 
@@ -237,14 +239,16 @@ class StateMachine(CoopGenerator):
             # State MemInit
             if cur_state == State.MemInit:
                 # Receive redundancy: output of receive reg => input of redundancy reg
-                redundancy_data = self.r_reg.O
+                # redundancy_data = self.r_reg.O
+                redundancy_data = self.DataFromClient.O
                 next_state = State.MemOff
 
+            # FIXME MemOff => MemOff transition not tested below (yet)
             # State MemOff
             elif ((cur_state == State.MemOff) & (cmd == Command.PowerOff)):
                 next_state = State.MemOff
 
-            # ERROR/PROBLEM tis state transition takes two clock (four edges)
+            # State MemOff
             elif ((cur_state == State.MemOff) & (cmd == Command.PowerOn)):
                 # Send(WakeAck) [to client requesting power-on]
                 data_to_client = WakeAcktT
@@ -260,22 +264,36 @@ class StateMachine(CoopGenerator):
             # READ: get address from client, send back data from mem
             # Assumes data_from_mem magically appears when addr changes (I guess)
             elif ((cur_state == State.MemOn) & (cmd == Command.Read)):
-                addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
+
+
+
+                # addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
+                addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting read]
+
+
                 data_to_client = data_from_mem # Send(Data)    [to requesting client]
                 next_state = State.MemOn
 
             # WRITE: get address and data from client, send to memory
             # messages from client arrive via r_reg (receive reg)
             elif ((cur_state == State.MemOn) & (cmd == Command.Write)):
-                addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
-                data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
+
+                # addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
+                addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting mem write]
+
+                # data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
+                data = self.DataFromClient.O # Receive(Data) [from client requesting mem write]
+
                 next_state = State.MemOn
 
             # else: cur_state == cur_state
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
-            self.s_reg.I          @= data_to_client
+
+            # self.s_reg.I        @= data_to_client
+            self.DataToClient.I   @= data_to_client
+
             self.redundancy_reg.I @= redundancy_data
 
 
