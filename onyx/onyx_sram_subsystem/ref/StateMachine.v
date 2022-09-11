@@ -244,6 +244,8 @@ module StateMachine (
     output [1:0] current_state/*verilator public*/,
     input CLK/*verilator public*/
 );
+wire [3:0] CommandFromClient_O;
+wire [15:0] DataFromClient_O;
 wire [15:0] DataToClient_O;
 wire [15:0] Mux2xBits16_inst0_O;
 wire [15:0] Mux2xBits16_inst1_O;
@@ -301,10 +303,20 @@ wire magma_Bits_4_eq_inst2_out;
 wire magma_Bits_4_eq_inst3_out;
 wire magma_Bits_4_eq_inst4_out;
 wire magma_Bits_4_eq_inst5_out;
-wire [3:0] o_reg_O;
-wire [15:0] r_reg_O;
 wire [15:0] redundancy_reg_O;
 wire [1:0] state_reg_O;
+Register_unq2 CommandFromClient (
+    .I(offer),
+    .O(CommandFromClient_O),
+    .CE(magma_Bit_or_inst0_out),
+    .CLK(CLK)
+);
+Register_unq1 DataFromClient (
+    .I(receive),
+    .O(DataFromClient_O),
+    .CE(magma_Bits_2_eq_inst1_out),
+    .CLK(CLK)
+);
 Register_unq1 DataToClient (
     .I(Mux2xBits16_inst12_O),
     .O(DataToClient_O),
@@ -313,13 +325,13 @@ Register_unq1 DataToClient (
 );
 Mux2xBits16 Mux2xBits16_inst0 (
     .I0(const_0_16_out),
-    .I1(r_reg_O),
+    .I1(DataFromClient_O),
     .S(magma_Bit_and_inst5_out),
     .O(Mux2xBits16_inst0_O)
 );
 Mux2xBits16 Mux2xBits16_inst1 (
     .I0(Mux2xBits16_inst0_O),
-    .I1(r_reg_O),
+    .I1(DataFromClient_O),
     .S(magma_Bit_and_inst4_out),
     .O(Mux2xBits16_inst1_O)
 );
@@ -343,7 +355,7 @@ Mux2xBits16 Mux2xBits16_inst12 (
 );
 Mux2xBits16 Mux2xBits16_inst13 (
     .I0(const_0_16_out),
-    .I1(r_reg_O),
+    .I1(DataFromClient_O),
     .S(magma_Bits_2_eq_inst5_out),
     .O(Mux2xBits16_inst13_O)
 );
@@ -619,56 +631,44 @@ coreir_eq #(
 coreir_eq #(
     .width(4)
 ) magma_Bits_4_eq_inst0 (
-    .in0(o_reg_O),
+    .in0(CommandFromClient_O),
     .in1(const_0_4_out),
     .out(magma_Bits_4_eq_inst0_out)
 );
 coreir_eq #(
     .width(4)
 ) magma_Bits_4_eq_inst1 (
-    .in0(o_reg_O),
+    .in0(CommandFromClient_O),
     .in1(const_1_4_out),
     .out(magma_Bits_4_eq_inst1_out)
 );
 coreir_eq #(
     .width(4)
 ) magma_Bits_4_eq_inst2 (
-    .in0(o_reg_O),
+    .in0(CommandFromClient_O),
     .in1(const_0_4_out),
     .out(magma_Bits_4_eq_inst2_out)
 );
 coreir_eq #(
     .width(4)
 ) magma_Bits_4_eq_inst3 (
-    .in0(o_reg_O),
+    .in0(CommandFromClient_O),
     .in1(const_4_4_out),
     .out(magma_Bits_4_eq_inst3_out)
 );
 coreir_eq #(
     .width(4)
 ) magma_Bits_4_eq_inst4 (
-    .in0(o_reg_O),
+    .in0(CommandFromClient_O),
     .in1(const_2_4_out),
     .out(magma_Bits_4_eq_inst4_out)
 );
 coreir_eq #(
     .width(4)
 ) magma_Bits_4_eq_inst5 (
-    .in0(o_reg_O),
+    .in0(CommandFromClient_O),
     .in1(const_3_4_out),
     .out(magma_Bits_4_eq_inst5_out)
-);
-Register_unq2 o_reg (
-    .I(offer),
-    .O(o_reg_O),
-    .CE(magma_Bit_or_inst0_out),
-    .CLK(CLK)
-);
-Register_unq1 r_reg (
-    .I(receive),
-    .O(r_reg_O),
-    .CE(magma_Bits_2_eq_inst1_out),
-    .CLK(CLK)
 );
 Register_unq1 redundancy_reg (
     .I(Mux2xBits16_inst13_O),

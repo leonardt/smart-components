@@ -144,45 +144,27 @@ class StateMachine(CoopGenerator):
         )()
         self.redundancy_reg.name = "redundancy_reg"
 
-        # Instead of registers to tansfer information,
-        # now have message queues.
+        # Instead of registers to transfer info, now have message queues.
         # Coming soon: ready-valid protocol
-
+        # 
+        # Formerly o_reg, r_reg, and s_reg
         # Note: Redundancy info and address info both come in via DataFrom queue
-        # self.DataToClient   = MessageQueue("s_reg", nbits=16);  # Was: s_reg
-        self.DataToClient   = MessageQueue("DataToClient", nbits=16);  # Was: s_reg
-        self.DataFromClient = MessageQueue("r_reg", nbits=16); # Was: r_reg
-
-
-        # self.o_reg = reg("o_reg", nbits=4)
-        self.CommandFromClient = MessageQueue("o_reg", nbits=4)
-
+        self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
+        self.DataFromClient    = MessageQueue("DataFromClient",    nbits=16);
+        self.DataToClient      = MessageQueue("DataToClient",      nbits=16);
 
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
 
-        # self.r_reg.I @= self.io.receive
-        self.DataFromClient.I @= self.io.receive
-
-        # self.o_reg.I @= self.io.offer
+        # Inputs
+        self.DataFromClient.I    @= self.io.receive
         self.CommandFromClient.I @= self.io.offer
 
-        # self.io.send @= self.s_reg.O
-        self.io.send @= self.DataToClient.O
+        # Outputs
+        self.io.send             @= self.DataToClient.O
         
-
-
-
-#         # Commands
-#         nbits = 4   # Good for up to 16 commands
-#         PowerOff = m.Bits[nbits](0)
-#         PowerOn  = m.Bits[nbits](1) # not used
-#         Read     = m.Bits[nbits](2)
-#         Write    = m.Bits[nbits](3)
-#         Idle     = m.Bits[nbits](4)
-
         # Convenient shortcuts
         cur_state = self.state_reg.O
         cmd       = self.CommandFromClient.O
@@ -199,13 +181,13 @@ class StateMachine(CoopGenerator):
         #             reg.CE @= (cur_state == state)
 
 
-        # Enable registers *only* in states where regs are used
-        def use_reg(reg, state, *more_states):
-            cond = (cur_state == state)
-            for s in more_states: cond = cond | (cur_state == s)
-            reg.CE @= cond
+#         # Enable registers *only* in states where regs are used
+#         def use_reg(reg, state, *more_states):
+#             cond = (cur_state == state)
+#             for s in more_states: cond = cond | (cur_state == s)
+#             reg.CE @= cond
 
-        use_reg(self.redundancy_reg, State.MemInit)
+        self.redundancy_reg.CE @= (cur_state == State.MemInit)
 
         # use_reg(self.r_reg, State.MemInit)
         # FIXME isn't r_reg also used in MemWrite and MemRead states? For address?
