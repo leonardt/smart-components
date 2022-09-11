@@ -1,3 +1,27 @@
+##############################################################################
+README='''
+
+# Also see README.txt
+
+# To see state machine diagram:
+    display state_machine2.png
+
+# To run state machine
+    python state_machine.py
+
+# To see output from state machine run
+    cat tmpdir/obj_dir/StateMachine.log | sed 's/beep/\
+beep/g'
+
+# To compare state machine verilog vs. prev successful run(s)
+    diff ref/StateMachine.v build/StateMachine.v && echo PASS || echo FAIL
+
+# To automatically run, see output, and compare to prev
+    ./test_state_machine.sh
+
+'''
+##############################################################################
+
 DBG=True
 if DBG:
     import sys
@@ -55,6 +79,31 @@ class State():
     Send    = m.Bits[nbits](i); i=i+1 # currently unused maybe
     MemOn   = m.Bits[nbits](i); i=i+1
 
+class MessageQueue():
+    '''
+    Want to be able to do something like:
+        self.CommandFromClient=MessageQueue("o_reg")
+        self.o_reg = self.CommandFromClient.Reg
+        self.o_reg.I @= self.io.offer
+        cmd       = self.o_reg.O
+        self.o_reg.CE          @= ((cur_state == State.MemOff) | (cur_state == State.MemOn))
+    '''
+
+    def __init__(self, name, nbits):
+        self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
+        self.Reg.name = name
+        self.I = self.Reg.I
+        self.O = self.Reg.O
+
+    def enable(self, cur_state, state, *more_states):
+        cond = (cur_state == state)
+        for s in more_states: cond = cond | (cur_state == s)
+        # self.Reg.CE @= cond
+        # q.enable(cond)
+        self.Reg.CE @= cond
+
+
+
 class StateMachine(CoopGenerator):
 
     def _decl_attrs(self, **kwargs):
@@ -82,41 +131,38 @@ class StateMachine(CoopGenerator):
         )()
         self.state_reg.name = "state_reg"
 
-        # "send" reg
-        self.s_reg = m.Register(
-            T=m.Bits[16],
-            has_enable=True,
-        )()
-        self.s_reg.name = "s_reg"
+        # Remaining regs all follow this same pattern
+        def reg(name, nbits):
+            r = m.Register(T=m.Bits[nbits], has_enable=True)()
+            r.name = name
+            return r
 
-        # "receive" reg
-        self.r_reg = m.Register(
-            T=m.Bits[16],
-            has_enable=True,
-        )()
-        self.r_reg.name = "r_reg"
 
-        # "offer" (cmd) reg
-        self.o_reg = m.Register(
-            T=m.Bits[4],
-            has_enable=True,
-        )()
-        self.o_reg.name = "o_reg"
+        # s="send", r="receive", o="offer" (command)
+        self.s_reg = reg("s_reg", nbits=16)
+        self.r_reg = reg("r_reg", nbits=16)
 
-        # "redundancy" reg
-        self.redundancy_reg = m.Register(
-            T=m.Bits[16],
-            has_enable=True,
-        )()
-        self.redundancy_reg.name = "redundancy_reg"
+        self.CommandFromClient = MessageQueue("o_reg", nbits=4)
+        self.o_reg = self.CommandFromClient.Reg
+
+        self.redundancy_reg = reg("redundancy_reg", nbits=16); # "redundancy" reg
+
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
         self.r_reg.I @= self.io.receive
-        self.o_reg.I @= self.io.offer
+
+
+        # self.o_reg.I @= self.io.offer
+        self.CommandFromClient.I @= self.io.offer
+
+
         self.io.send @= self.s_reg.O
         
+
+
+
 #         # Commands
 #         nbits = 4   # Good for up to 16 commands
 #         PowerOff = m.Bits[nbits](0)
@@ -127,22 +173,48 @@ class StateMachine(CoopGenerator):
 
         # Convenient shortcuts
         cur_state = self.state_reg.O
-        cmd       = self.o_reg.O
+        cmd       = self.CommandFromClient.O
         rcv_in    = self.r_reg.O
 
         # Enable registers only where needed (why? maybe not strictly necessary?)
         # TODO can try wiring all enables to 1'b1 and see if anything changes...?
 
+
         # MemInit uses r_reg, redundancy reg
-        self.r_reg.CE          @= (cur_state == State.MemInit)
-        self.redundancy_reg.CE @= (cur_state == State.MemInit)
+        #         self.r_reg.CE          @= (cur_state == State.MemInit)
+
+        #         def hookup(reg, state):
+        #             reg.CE @= (cur_state == state)
 
 
-        # Send uses s_reg
-        self.s_reg.CE          @= (cur_state == State.Send)
+        # Enable registers *only* in states where regs are used
+        def use_reg(reg, state, *more_states):
+            cond = (cur_state == state)
+            for s in more_states: cond = cond | (cur_state == s)
+            reg.CE @= cond
 
-        # MemOff, MemOn use o_reg
-        self.o_reg.CE          @= ((cur_state == State.MemOff) | (cur_state == State.MemOn))
+        use_reg(self.redundancy_reg, State.MemInit)
+
+        use_reg(self.r_reg, State.MemInit)
+        use_reg(self.s_reg, State.Send)
+
+
+#         # use_reg(self.o_reg, State.MemOff, State.MemOn)
+#         def use_reg2(q, state, *more_states):
+#             cond = (cur_state == state)
+#             for s in more_states: cond = cond | (cur_state == s)
+#             # reg.CE @= cond
+#             q.enable(cond)
+
+        # use_reg2(self.CommandFromClient, State.MemOff, State.MemOn)
+
+        self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
+
+
+#         cond = (cur_state == State.MemOff) | (cur_state == State.MemOn)
+#         self.CommandFromClient.hookup(cond)
+
+
 
         # So, @mydecorator is just an easier way of saying myfunc = mydecorator(myfunc)
 
@@ -172,6 +244,7 @@ class StateMachine(CoopGenerator):
             elif ((cur_state == State.MemOff) & (cmd == Command.PowerOff)):
                 next_state = State.MemOff
 
+            # ERROR/PROBLEM tis state transition takes two clock (four edges)
             elif ((cur_state == State.MemOff) & (cmd == Command.PowerOn)):
                 # Send(WakeAck) [to client requesting power-on]
                 data_to_client = WakeAcktT
@@ -220,6 +293,8 @@ def show_verilog():
 # print("okay so that was the verilog")
 # print("==============================================================================")
 
+# print("TO TEST: cd blahblah; python test_state_machine.py or whatever
+
 
 #==============================================================================
 #==============================================================================
@@ -231,16 +306,27 @@ def test_state_machine_fault():
 
     # Convenient little shortcut
     # - tester.step(1) is one clock edge
-    # - step(1) = one complete clock cycle = two clock edges (one pos, one neg)
-    def step(): tester.step(2)
+    # - mycycle() = one complete clock cycle = two clock edges (one pos, one neg)
+    def cycle(): tester.step(2)
 
-    def check_transition(cmd, state, nsteps):
+    def check_transition(cmd, state, ncycles=2):
+        # Because "offer" is registered via "o_reg", takes two cycles to transition
+        # Cy 1: offer => o_reg.O, next_state changes (current_state stays the same)
+        # Cy 2: 'next_state' wire clocks into 'current_state' reg
+        ncycles=2
         tester.circuit.offer = cmd
-        tester.print("beep boop begin: o_reg OUT = command %d\n", tester.circuit.o_reg.O)
-        for i in range(nsteps):
-            step()
-            fmt=f"beep boop step{i+1}: o_reg OUT = command %d\n"
-            tester.print(fmt, tester.circuit.o_reg.O)
+
+        # tester.print("beep boop begin: o_reg OUT = command %d\n",
+        #              tester.circuit.o_reg.O)
+        # tester.print("beep boop begin: current_state = state %d\n",
+        #              tester.circuit.current_state)
+
+        for i in range(ncycles):
+            cycle()
+            # cfmt=f"beep boop cy{i+1}: o_reg OUT = command %d\n"
+            # tester.print(cfmt, tester.circuit.o_reg.O)
+            # sfmt=f"beep boop cy{i+1}: current_state = state %d\n"
+            # tester.print(sfmt, tester.circuit.current_state)
 
         tester.circuit.current_state.expect(state)
 
@@ -255,9 +341,10 @@ def test_state_machine_fault():
     tester.circuit.current_state.expect(State.MemInit)
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop successfully booted in state MemInit maybe\n")
+    tester.print("beep boop waiting for a single clock edge...\n")
 
     ########################################################################
-    step()
+    cycle()
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop and now we should be in state Memoff\n")
     tester.circuit.current_state.expect(State.MemOff)
@@ -272,42 +359,41 @@ def test_state_machine_fault():
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOff => MemOff on command PowerOff\n")
-    check_transition(Command.PowerOff, State.MemOff, nsteps=1)
+    check_transition(Command.PowerOff, State.MemOff)
     tester.print("beep boop successfully arrived in state MemOff\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOff => MemOn on command PowerOn\n")
 
-    # FIXME why do we need two (4) steps for this transition?
-    # I guess...one step for command to propagate from o_reg.I to o_reg.O
-    # Plus one step for state to move from MemOff to MemOn...?
-    check_transition(Command.PowerOn, State.MemOn, nsteps=2)
+    # FIXME why do we need two cycles (4 edges) for this transition?
+    # I guess...one cycle for command to propagate from o_reg.I to o_reg.O
+    # Plus one cycle for state to move from MemOff to MemOn...?
+    check_transition(Command.PowerOn, State.MemOn, ncycles=2)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Idle\n")
-    check_transition(Command.Idle, State.MemOn, nsteps=1)
+    check_transition(Command.Idle, State.MemOn, ncycles=1)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Read\n")
-    check_transition(Command.Read, State.MemOn, nsteps=1)
+    check_transition(Command.Read, State.MemOn, ncycles=1)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
-    check_transition(Command.Write, State.MemOn, nsteps=1)
+    check_transition(Command.Write, State.MemOn, ncycles=1)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
-    # FIXME why does this take two steps???
-    check_transition(Command.PowerOff, State.MemOff, nsteps=2)
+    check_transition(Command.PowerOff, State.MemOff, ncycles=2)
     tester.print("beep boop successfully arrived in state MemOff\n")
 
 

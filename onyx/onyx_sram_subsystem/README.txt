@@ -1,5 +1,11 @@
+# For latest info see README at top of state_machine.py
+# "single source of truth"
+
+
+
+# ------------------------------------------------------------------------
 # To see state machine diagram:
-    display state_machine.png
+    display state_machine2.png
 
 # To run state machine
     python state_machine.py
@@ -12,4 +18,4 @@ beep/g'
     diff ref/StateMachine.v build/StateMachine.v && echo PASS || echo FAIL
 
 # To automatically run, see output, and compare to prev
-    ./test_machine.sh
+    ./test_state_machine.sh
