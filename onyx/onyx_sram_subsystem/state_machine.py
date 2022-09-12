@@ -386,35 +386,19 @@ class StateMachine(CoopGenerator):
 
             # State 'MemInit'
             if cur_state == State.MemInit:
-                # Receive redundancy: output of receive reg => input of redundancy reg
-                # redundancy_data = self.r_reg.O
+                # Get redundancy info from client/testbench
 
-
-                # redundancy_data = self.DataFromClient.get()
-                # redundancy_data = self.DataFromClient.get_rv()
-                # redundancy_data = m.Bits[16](7)
-
-                # success = self.DataFromClient.get_rv();
-                # redundancy_data = self.DataFromClient.Reg.O
-
+                # Wait for valid input data
                 if self.DataFromClient.valid == m.Bits[1](1):
-                    # redundancy_data = self.DataFromClient.Reg.O
+                    # Then grab it and move on (else will remain in same state)
                     redundancy_data = self.DataFromClient.data
-
-
-                    # TODO try tomorrow:
-                    # redundancy_data = self.DataFromClient.data
-                    # if is_valid(self.DataFromClient):
-                    #     next_state = State.MemOff
-
-
-
                     next_state = State.MemOff
-
-
 
             # State MemOff
             elif cur_state == State.MemOff:
+
+                # Original plan was to simply redefine get() when ready/valid
+                # infrastructure was ready; but it's not that simple is it :(
                 c = self.CommandFromClient.get()
 
                 # MemOff => MemOn on command PowerOn
@@ -422,9 +406,11 @@ class StateMachine(CoopGenerator):
                     data_to_client = WakeAcktT
                     next_state = State.MemOn
 
-                # MemOff => MemOff on command PowerOff
-                # Why? By default we will stay in MemOff anyway...?
+                # State diagram says MemOff => MemOff on command PowerOff
+                # But. Why? By default we will stay in MemOff anyway...?
                 # elif (c == Command.PowerOff): next_state = State.MemOff
+                # FIXME will client freak out if no ack from PowerOff command? grumble grumble
+
 
             # State MemOn
             elif cur_state == State.MemOn:
@@ -433,7 +419,9 @@ class StateMachine(CoopGenerator):
                 if c == Command.PowerOff:
                     next_state = State.MemOff
 
+                # State diagram says check for idle command. But.
                 # Why? By default we will stay in MemOn anyway...?
+                # FIXME will client freak out if no ack command? grumble grumble
                 # elif c == Command.Idle:
                 #     next_state = State.MemOn
 
@@ -468,19 +456,19 @@ def build_verilog():
 def show_verilog():
     with open('steveri/tmpdir/fsm.v', 'r') as f: print(f.read())
 
+# ------------------------------------------------------------------------
 # build_verilog()
-
 # show_verilog()
 # print("==============================================================================")
 # print("okay so that was the verilog")
 # print("==============================================================================")
-
 # print("TO TEST: cd blahblah; python test_state_machine.py or whatever
+# ------------------------------------------------------------------------
 
+#==============================================================================
+# TESTBENCH
+#==============================================================================
 
-#==============================================================================
-#==============================================================================
-#==============================================================================
 import fault
 def test_state_machine_fault():
     
