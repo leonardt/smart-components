@@ -238,11 +238,6 @@ class MessageQueue():
         self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
         self.Reg.name = name
 
-#         self.ready = m.Bits[1](0)
-#         self.Ready = m.Register(T=m.Bits[1])()
-#         self.Ready.I @= self.ready
-# 
-
         self.I = self.Reg.I
         self.O = self.Reg.O
 
@@ -255,10 +250,7 @@ class MessageQueue():
 
     def get(self): return self.Reg.O
 
-    def connect_input(self, wire): self.Reg.I @= wire
-
-#     # TODO NEXT try out get_rv()
-#     def get_rv(self): return true
+    # def connect_input(self, wire): self.Reg.I @= wire
 
 
 class StateMachine(CoopGenerator):
@@ -453,7 +445,8 @@ class StateMachine(CoopGenerator):
             self.redundancy_reg.I @= redundancy_data
 
             # "to" MessageQueue inputs
-            self.DataToClient.connect_input(data_to_client)
+            self.DataToClient.Reg.I @= data_to_client
+            # self.DataToClient.connect_input(data_to_client)
 
 
 
