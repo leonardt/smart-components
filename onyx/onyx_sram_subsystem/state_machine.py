@@ -363,16 +363,13 @@ class StateMachine(CoopGenerator):
         @m.inline_combinational()
         def controller():
 
-            addr_to_mem     = m.Bits[16](0) # changes on read, write request
-            data_from_mem   = m.Bits[16](0) # magically changes when addr_to_mem changes
-            data_to_client  = m.Bits[16](0)
-            redundancy_data = m.Bits[16](0) # changes when we enter meminit state
+            addr_to_mem     = m.Bits[16](13) # changes on read, write request
+            data_from_mem   = m.Bits[16](13) # magically changes when addr_to_mem changes
+            data_to_client  = m.Bits[16](13)
+            redundancy_data = m.Bits[16](13) # changes when we enter meminit state
 
             # Convenient shortcuts
             cur_state = self.state_reg.O
-
-            # TODO i think this is unused??
-            cmd       = self.CommandFromClient.O
 
             # Dummy value for now
             WakeAcktT       = m.Bits[16](1)
@@ -386,8 +383,6 @@ class StateMachine(CoopGenerator):
             dfc_ready = m.Bits[1](0)
             # self.DataFromClient.ReadyReg.I @= dfc_ready
             self.DataFromClient.ready @= dfc_ready
-            
-
 
             # State 'MemInit'
             if cur_state == State.MemInit:
