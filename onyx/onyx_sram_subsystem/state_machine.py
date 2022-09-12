@@ -8,7 +8,10 @@ README='''
 # Also see README.txt
 
 # To see state machine diagram:
-    display state_machine2.png
+    display state_machine3.png
+
+# To automatically run, see output, and compare to prev
+    ./test_state_machine.sh
 
 # To run state machine
     python state_machine.py
@@ -19,10 +22,6 @@ beep/g'
 
 # To compare state machine verilog vs. prev successful run(s)
     diff ref/StateMachine.v tmpdir/StateMachine.v && echo PASS || echo FAIL
-
-# To automatically run, see output, and compare to prev
-    ./test_state_machine.sh
-
 '''
 ##############################################################################
 
@@ -34,8 +33,9 @@ if DBG:
 else:
     def debug(m): pass
 
-import sys
+#------------------------------------------------------------------------
 debug("Begin importing python packages...")
+import sys
 import magma as m
 import hwtypes as ht
 from mock_mem import SRAMDMR
@@ -44,6 +44,7 @@ from session import SessionTypeVisitor, SessionT, LabelT
 from util import inverse_look_up, BiMap
 debug("* Done importing python packages...")
 
+#------------------------------------------------------------------------
 class CoopGenerator(m.Generator2):
     def __init__(self, **kwargs):
         self._decl_attrs(**kwargs)
@@ -83,6 +84,138 @@ class State():
     Send    = m.Bits[nbits](i); i=i+1 # currently unused maybe
     MemOn   = m.Bits[nbits](i); i=i+1
 
+class Queue():
+    '''A way to pass messages between ourself and others. Depending on
+    which way you want to go, you'll use one of the subclasses
+    'RcvQueue' or 'XmtQueue', see below for details.
+    '''
+
+    # def __init__(self, name, nbits, port=None):
+    def __init__(self, name, nbits):
+        self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
+        self.Reg.name = name    ; # E.g. "DataFromClient"
+
+        # Initialize to not ready, not valid
+        self.ReadyReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
+        self.ReadyReg.name = name+"_ready" ; # E.g. "DataFromClient_ready"
+
+
+        self.ValidReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
+        self.ValidReg.name = name+"_valid" ; # E.g. "DataFromClient_valid"
+
+        self.I = self.Reg.I
+        self.O = self.Reg.O
+
+        # if port != None: self.Reg.I @= port
+
+    # Convenience function; given a 'cur_state' wire and some states
+    # (constants), enable the register ONLY when in those states
+    # This probably builds terrible RTL, but with any luck the
+    # downstream tools will optimize easily...
+    def enable(self, cur_state, state, *more_states):
+        cond = (cur_state == state)
+        for s in more_states: cond = cond | (cur_state == s)
+        self.Reg.CE @= cond
+
+    # Until everyone is on board with R/V, use this for backward compatibility
+    def get(self): return self.Reg.O
+
+
+class RcvQueue(Queue):
+    '''
+    Supplies the basic signals for receiving data from a ready-valid port:
+        RcvQueue.data  = RcvQueue.Reg.O = data from the queue
+        RcvQueue.ready = RcvQueue.ReadyReg.I = tells the queue we are ready for data
+        RcvQueue.valid = RcvQueue.ValidReg.O = queue tells us when data is available
+
+    Sample usage:
+
+       # Instantiate a transmit queue and tell it what signals
+       # client will use for communication
+       
+       DataFromClient = RcvQueue("DataFromClient", nbits=16,
+           data_in   = self.io.receive,
+           valid_in  = self.io.dfcq_valid,
+           ready_out = self.io.dfcq_ready
+           );
+
+       # To read data from queue:
+       
+       # 1. Set ready bit for queue to show that we are ready for data.
+       DataFromClient.ready @= dfc_ready
+       dfc_ready = m.Bits[1](1)
+
+       # 2. Check the valid bit. Grab data iff valid is true.
+       if DataFromClient.valid == m.Bits[1](1): data = DataFromClient.data
+
+    '''
+    def __init__(self, name, nbits, data_in, valid_in, ready_out):
+        Queue.__init__(self, name, nbits)
+
+        # "We" control ready signal
+        self.ready = self.ReadyReg.I
+
+        # "They" control valid signal and data
+        # (valid and data come from queue out-port)
+        self.valid = self.ValidReg.O
+        self.data  = self.Reg.O
+
+        # Connect the ports for data, ready, valid to/from client
+        self.Reg.I      @= data_in
+        self.ValidReg.I @= valid_in
+        ready_out       @= self.ReadyReg.O
+
+
+# TODO Not plugged in yet
+class XmtQueue(Queue):
+    '''
+    Supplies the basic signals for sending data to a ready-valid port:
+        XmtQueue.data  = XmtQueue.Reg.O = data from the queue
+        XmtQueue.ready = XmtQueue.ReadyReg.I = tells the queue we are ready for data
+        XmtQueue.valid = XmtQueue.ValidReg.O = queue tells us when data is available
+
+    Sample usage:
+
+       # Instantiate a transmit queue and tell it what signals
+       # client will use for communication
+       
+       DataToClient = XmtQueue("DataToClient", nbits=16,
+           data_out  = self.io.send,
+           valid_out = self.io.dtcq_valid,
+           ready_in  = self.io.dtcq_ready
+           );
+
+       # To send data to queue:
+       
+       # 1. Set the valid bit and write the data to the queue
+       dtcq_valid = m.Bits[1](1)
+       DataToClient.data = m.Bits[16](0x1234)
+
+       # 2. Wait for ready bit to show that data has been collected
+       while DataFromClient.ready != m.Bits[1](1): wait()
+
+    '''
+    def __init__(self, name, nbits, data_out, valid_out, ready_in):
+        Queue.__init__(self, name, nbits)
+
+        # "They" control ready signal
+        self.ready = self.ReadyReg.O
+
+        # "We" control valid signal and data
+        # (valid and data got to queue in-port)
+        self.valid = self.ValidReg.I
+        self.data  = self.Reg.O=I
+
+        # Connect the ports for data, ready, valid to/from client
+        data_out        @= self.Reg.O
+        valid_out       @= self.ValidReg.O
+        self.ReadyReg.I @= ready_in
+
+        # self.Reg.I      @= data_in
+        # self.ValidReg.I @= valid_in
+        # ready_out       @= self.ReadyReg.O
+
+
 class MessageQueue():
     '''
     Examples:
@@ -104,6 +237,11 @@ class MessageQueue():
         self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
         self.Reg.name = name
 
+#         self.ready = m.Bits[1](0)
+#         self.Ready = m.Register(T=m.Bits[1])()
+#         self.Ready.I @= self.ready
+# 
+
         self.I = self.Reg.I
         self.O = self.Reg.O
 
@@ -118,6 +256,9 @@ class MessageQueue():
 
     def connect_input(self, wire): self.Reg.I @= wire
 
+#     # TODO NEXT try out get_rv()
+#     def get_rv(self): return true
+
 
 class StateMachine(CoopGenerator):
 
@@ -129,6 +270,9 @@ class StateMachine(CoopGenerator):
         super()._decl_io(**kwargs)
         self.io += m.IO(
             receive=m.In(m.Bits[16]),
+            dfcq_valid = m.In(m.Bits[1]),
+            dfcq_ready = m.Out(m.Bits[1]),
+
             offer=m.In(m.Bits[4]),
             send=m.Out(m.Bits[16]),
             current_state=m.Out(m.Bits[2]),
@@ -158,16 +302,30 @@ class StateMachine(CoopGenerator):
         # Formerly o_reg, r_reg, and s_reg
         # Note: Redundancy info and address info both come in via DataFrom queue
         self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
-        self.DataFromClient    = MessageQueue("DataFromClient",    nbits=16);
-        self.DataToClient      = MessageQueue("DataToClient",      nbits=16);
+
+        self.DataFromClient = RcvQueue(
+            "DataFromClient", nbits=16,
+            data_in   = self.io.receive,
+            valid_in  = self.io.dfcq_valid,
+            ready_out = self.io.dfcq_ready
+        );
+
+        self.DataToClient = MessageQueue("DataToClient", nbits=16);
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
 
         # Inputs
-        self.DataFromClient.I    @= self.io.receive
         self.CommandFromClient.I @= self.io.offer
+
+        # self.DataFromClient.I        @= self.io.receive
+        # self.DataFromClient.ValidReg.I  @= self.io.dfcq_valid
+
+
+        # self.io.dfcq_ready        @= self.DataFromClient.ReadyReg.O
+
+
 
         # Outputs
         self.io.send             @= self.DataToClient.O
@@ -210,13 +368,44 @@ class StateMachine(CoopGenerator):
 
             # Default is to stay in the same state as before
             next_state = cur_state
+                
+            # Reset all ready-valid signals that we control.
+            # self.DataFromClient.ready = m.Bits[1](0); # Not ready for input from client
+            # self.DataFromClient.ReadyReg.I = m.Bits[1](0); # Not ready for input from client
+            dfc_ready = m.Bits[1](0)
+            # self.DataFromClient.ReadyReg.I @= dfc_ready
+            self.DataFromClient.ready @= dfc_ready
+            
 
-            # State MemInit
+
+            # State 'MemInit'
             if cur_state == State.MemInit:
                 # Receive redundancy: output of receive reg => input of redundancy reg
                 # redundancy_data = self.r_reg.O
-                redundancy_data = self.DataFromClient.get()
-                next_state = State.MemOff
+
+
+                # redundancy_data = self.DataFromClient.get()
+                # redundancy_data = self.DataFromClient.get_rv()
+                # redundancy_data = m.Bits[16](7)
+
+                # success = self.DataFromClient.get_rv();
+                # redundancy_data = self.DataFromClient.Reg.O
+
+                if self.DataFromClient.valid == m.Bits[1](1):
+                    # redundancy_data = self.DataFromClient.Reg.O
+                    redundancy_data = self.DataFromClient.data
+
+
+                    # TODO try tomorrow:
+                    # redundancy_data = self.DataFromClient.data
+                    # if is_valid(self.DataFromClient):
+                    #     next_state = State.MemOff
+
+
+
+                    next_state = State.MemOff
+
+
 
             # State MemOff
             elif cur_state == State.MemOff:
@@ -323,26 +512,71 @@ def test_state_machine_fault():
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
     tester.print("beep boop testing state_machine circuit\n")
+
     
+    tester.print("beep boop redundancy data not ready so setting dfc valid=0\n");
+    tester.circuit.dfcq_valid = m.Bits[1](0)
+
+    tester.circuit.current_state.expect(State.MemInit)
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop 0 successfully booted in state MemInit maybe\n")
+    tester.print("beep boop waiting two complete clock cycles...\n")
+
+    cycle(); cycle()
+    tester.print("beep boop cannot move on from state MemInit until dfc queue valid\n")
+    tester.circuit.current_state.expect(State.MemInit)
+    tester.print("beep boop 1 still in MemInit\n");
+
+
     ########################################################################
     # Start in state MemInit
     tester.circuit.current_state.expect(State.MemInit)
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop successfully booted in state MemInit maybe\n")
-    tester.print("beep boop waiting for a single clock edge...\n")
+
+    # Check contents of redundancy_reg
+    # For now, our circuit sets it to zero and we can check that
+    # Later, it will be an unknown quantity supplied by the SRAM
+
+    tester.print("beep boop sending redundancy data to MC\n")
+
+    # Send "17" to MC as redundancy data
+    tester.circuit.receive = m.Bits[16](17)
+
+    # Mark data "valid"
+    valid=1
+    tester.circuit.dfcq_valid = m.Bits[1](valid)
+
+    # Wait one cycle for valid signal to propagate
+    # After which valid signal and valid data should be avail on MC input regs
+    tester.print("beep boop after one cy valid sig should be avail internally\n")
+    cycle();
+    tester.circuit.DataFromClient_valid.O.expect(valid)
+
+    
+    # Wait one cycle MC to both 1) clock data into its internal reg
+    # and 2) go to new state (MemOff)
+    cycle()
+
+
+    tester.print("beep boop and now we should be in state Memoff\n")
+    tester.circuit.current_state.expect(State.MemOff)
+    tester.print("beep boop received redundancy data '%d' == 17 == 0x11\n", 
+                 tester.circuit.redundancy_reg.O)
+    tester.circuit.redundancy_reg.O.expect(17)
+    tester.print("beep boop passed initial redundancy data check\n")
+
+
+    valid=0
+    tester.circuit.dfcq_valid = m.Bits[1](valid)
+
+
 
     ########################################################################
     cycle()
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop and now we should be in state Memoff\n")
     tester.circuit.current_state.expect(State.MemOff)
-
-    # Check contents of redundancy_reg
-    # For now, our circuit sets it to zero and we can check that
-    # Later, it will be an unknown quantity supplied by the SRAM
-    tester.print("beep boop received redundancy data '%d'\n", tester.circuit.redundancy_reg.O)
-    tester.circuit.redundancy_reg.O.expect(0)
-    tester.print("beep boop passed initial redundancy data check\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
