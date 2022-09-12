@@ -299,14 +299,16 @@ class StateMachine(CoopGenerator):
         # Instead of registers to transfer info, now have message queues.
         # Coming soon: ready-valid protocol
         # 
-        # Formerly o_reg, r_reg, and s_reg
-        # Note: Redundancy info and address info both come in via DataFrom queue
+        # Formerly registers o_reg, r_reg, and s_reg
+        # Now ready/valid queues CommandFromClient, DataFromClient, DataToClient
+
+        # Note: Redundancy info and address info both come in via DFC queue
 
         # MessageQueue == register DEPRECATED, instead want
         # RcvQueue = "receive" queue w/ ready-valid protocol
         # XmtQueue = "send" queue w/ ready-valid protocol
 
-        # OLD style comm (FIXME)
+        # OLD style MessageQueue comm (FIXME)
         self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
         # self.CommandFromClient = RcvQueue(
         #     "CommandFromClient", nbits=16
@@ -346,16 +348,12 @@ class StateMachine(CoopGenerator):
         self.redundancy_reg.CE @= (cur_state == State.MemInit)
 
         # Enable queues *only* in states where queues are used (why?)
-        # FIXME isn't r_reg also used in MemWrite and MemRead states? For address?
+        # FIXME isn't DFC also used in MemWrite and MemRead states? For address?
+        # Also DTC? FIXME Why is this working???
         cur_state = self.state_reg.O
         self.DataFromClient.enable(   cur_state, State.MemInit)
         self.DataToClient.enable(     cur_state, State.Send)
         self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
-
-#         def foo(port, data):
-#             # self.DataToClient.I   @= data_to_client
-#             port @= data
-# 
 
         # ==============================================================================
         # Note inline_combinational() is not very robust i.e. very particular
