@@ -250,8 +250,6 @@ class MessageQueue():
 
     def get(self): return self.Reg.O
 
-    # def connect_input(self, wire): self.Reg.I @= wire
-
 
 class StateMachine(CoopGenerator):
 
@@ -261,13 +259,22 @@ class StateMachine(CoopGenerator):
 
     def _decl_io(self, **kwargs):
         super()._decl_io(**kwargs)
+
+        # dfcq = "data-from-client queue" (i.e. receive)
+        # dtcq = "data-to-client queue" (i.e. send)
         self.io += m.IO(
             receive=m.In(m.Bits[16]),
             dfcq_valid = m.In(m.Bits[1]),
             dfcq_ready = m.Out(m.Bits[1]),
 
             offer=m.In(m.Bits[4]),
+            # offer_valid = m.In(m.Bits[1]),  TBD
+            # offer_ready = m.Out(m.Bits[1]), TBD
+
             send=m.Out(m.Bits[16]),
+            # dtcq_valid = m.In(m.Bits[1]),  TBD
+            # dtcq_ready = m.Out(m.Bits[1]), TBD
+
             current_state=m.Out(m.Bits[2]),
         )
 
@@ -294,8 +301,21 @@ class StateMachine(CoopGenerator):
         # 
         # Formerly o_reg, r_reg, and s_reg
         # Note: Redundancy info and address info both come in via DataFrom queue
-        self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
 
+        # MessageQueue == register DEPRECATED, instead want
+        # RcvQueue = "receive" queue w/ ready-valid protocol
+        # XmtQueue = "send" queue w/ ready-valid protocol
+
+        # OLD style comm (FIXME)
+        self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
+        # self.CommandFromClient = RcvQueue(
+        #     "CommandFromClient", nbits=16
+        #     data_in   = self.io.offer,
+        #     valid_in  = self.io.offer_valid,
+        #     ready_out = self.io.offer_ready
+        # );
+
+        # NEW style comm
         self.DataFromClient = RcvQueue(
             "DataFromClient", nbits=16,
             data_in   = self.io.receive,
@@ -303,24 +323,22 @@ class StateMachine(CoopGenerator):
             ready_out = self.io.dfcq_ready
         );
 
+        # OLD style comm (FIXME)
         self.DataToClient = MessageQueue("DataToClient", nbits=16);
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
 
-        # Inputs
+        # Inputs (old style)
         self.CommandFromClient.I @= self.io.offer
 
-        # self.DataFromClient.I        @= self.io.receive
+        # Inputs (not needed w/ new style)
+        # self.DataFromClient.I           @= self.io.receive
         # self.DataFromClient.ValidReg.I  @= self.io.dfcq_valid
+        # self.io.dfcq_ready              @= self.DataFromClient.ReadyReg.O
 
-
-        # self.io.dfcq_ready        @= self.DataFromClient.ReadyReg.O
-
-
-
-        # Outputs
+        # Outputs (old style)
         self.io.send             @= self.DataToClient.O
         
         # Enable registers *only* in states where regs are used (why?)
@@ -330,14 +348,14 @@ class StateMachine(CoopGenerator):
         # Enable queues *only* in states where queues are used (why?)
         # FIXME isn't r_reg also used in MemWrite and MemRead states? For address?
         cur_state = self.state_reg.O
-        self.DataFromClient.enable(cur_state, State.MemInit)
-        self.DataToClient.enable(cur_state, State.Send)
+        self.DataFromClient.enable(   cur_state, State.MemInit)
+        self.DataToClient.enable(     cur_state, State.Send)
         self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
 
-        def foo(port, data):
-            # self.DataToClient.I   @= data_to_client
-            port @= data
-
+#         def foo(port, data):
+#             # self.DataToClient.I   @= data_to_client
+#             port @= data
+# 
 
         # ==============================================================================
         # Note inline_combinational() is not very robust i.e. very particular
@@ -354,6 +372,8 @@ class StateMachine(CoopGenerator):
 
             # Convenient shortcuts
             cur_state = self.state_reg.O
+
+            # TODO i think this is unused??
             cmd       = self.CommandFromClient.O
 
             # Dummy value for now
@@ -446,8 +466,6 @@ class StateMachine(CoopGenerator):
 
             # "to" MessageQueue inputs
             self.DataToClient.Reg.I @= data_to_client
-            # self.DataToClient.connect_input(data_to_client)
-
 
 
 def build_verilog():
