@@ -252,11 +252,15 @@ module StateMachine (
     input [0:0] dfcq_valid/*verilator public*/,
     output [0:0] dfcq_ready/*verilator public*/,
     input [3:0] offer/*verilator public*/,
+    input [0:0] offer_valid/*verilator public*/,
+    output [0:0] offer_ready/*verilator public*/,
     output [15:0] send/*verilator public*/,
     output [1:0] current_state/*verilator public*/,
     input CLK/*verilator public*/
 );
 wire [3:0] CommandFromClient_O;
+wire [0:0] CommandFromClient_ready_O;
+wire [0:0] CommandFromClient_valid_O;
 wire [15:0] DataFromClient_O;
 wire [0:0] DataFromClient_ready_O;
 wire [0:0] DataFromClient_valid_O;
@@ -316,6 +320,16 @@ Register_unq2 CommandFromClient (
     .I(offer),
     .O(CommandFromClient_O),
     .CE(magma_Bit_or_inst0_out),
+    .CLK(CLK)
+);
+Register_unq3 CommandFromClient_ready (
+    .I(const_0_1_out),
+    .O(CommandFromClient_ready_O),
+    .CLK(CLK)
+);
+Register_unq3 CommandFromClient_valid (
+    .I(offer_valid),
+    .O(CommandFromClient_valid_O),
     .CLK(CLK)
 );
 Register_unq1 DataFromClient (
@@ -658,6 +672,7 @@ Register state_reg (
     .CLK(CLK)
 );
 assign dfcq_ready = DataFromClient_ready_O;
+assign offer_ready = CommandFromClient_ready_O;
 assign send = DataToClient_O;
 assign current_state = state_reg_O;
 endmodule

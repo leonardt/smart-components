@@ -91,17 +91,18 @@ class Queue():
     '''
 
     # def __init__(self, name, nbits, port=None):
-    def __init__(self, name, nbits):
+    def __init__(self, name, nbits, readyvalid=True):
         self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
         self.Reg.name = name    ; # E.g. "DataFromClient"
 
-        # Initialize to not ready, not valid
-        self.ReadyReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
-        self.ReadyReg.name = name+"_ready" ; # E.g. "DataFromClient_ready"
-
-
-        self.ValidReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
-        self.ValidReg.name = name+"_valid" ; # E.g. "DataFromClient_valid"
+        if readyvalid:
+            # Initialize to not ready, not valid
+            self.ReadyReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
+            self.ReadyReg.name = name+"_ready" ; # E.g. "DataFromClient_ready"
+            
+            
+            self.ValidReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
+            self.ValidReg.name = name+"_valid" ; # E.g. "DataFromClient_valid"
 
         self.I = self.Reg.I
         self.O = self.Reg.O
@@ -149,15 +150,16 @@ class RcvQueue(Queue):
        if DataFromClient.valid == m.Bits[1](1): data = DataFromClient.data
 
     '''
-    def __init__(self, name, nbits, data_in=None, valid_in=None, ready_out=None):
-        Queue.__init__(self, name, nbits)
+    # set ReadyValid TRUE to use readyvalid protocol, otherwise it's just a register
+    def __init__(self, name, nbits, readyvalid=False, data_in=None, valid_in=None, ready_out=None):
+        Queue.__init__(self, name, nbits, readyvalid)
 
         # "We" control ready signal
-        self.ready = self.ReadyReg.I
+        if readyvalid: self.ready = self.ReadyReg.I
 
         # "They" control valid signal and data
         # (valid and data come from queue out-port)
-        self.valid = self.ValidReg.O
+        if readyvalid: self.valid = self.ValidReg.O
         self.data  = self.Reg.O
 
         # Connect the ports for data, ready, valid to/from client
@@ -215,6 +217,10 @@ class XmtQueue(Queue):
         # self.ValidReg.I @= valid_in
         # ready_out       @= self.ReadyReg.O
 
+    # Backward compatibility for now, will delete soon
+    def get(self): return self.Reg.O
+
+
 # Deprecated simple register interface w/o ready/valid
 # to be deleted after code has been updated
 class MessageQueue():
@@ -268,8 +274,8 @@ class StateMachine(CoopGenerator):
             dfcq_ready = m.Out(m.Bits[1]),
 
             offer=m.In(m.Bits[4]),
-            # offer_valid = m.In(m.Bits[1]),  TBD
-            # offer_ready = m.Out(m.Bits[1]), TBD
+            offer_valid = m.In(m.Bits[1]),
+            offer_ready = m.Out(m.Bits[1]),
 
             send=m.Out(m.Bits[16]),
             # dtcq_valid = m.In(m.Bits[1]),  TBD
@@ -309,31 +315,32 @@ class StateMachine(CoopGenerator):
         # XmtQueue = "send" queue w/ ready-valid protocol
 
         # OLD style MessageQueue comm (FIXME)
-        self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
-        # self.CommandFromClient = RcvQueue(
-        #     "CommandFromClient", nbits=16
-        #     data_in   = self.io.offer,
-        #     valid_in  = self.io.offer_valid,
-        #     ready_out = self.io.offer_ready
-        # );
+        # self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
+        self.CommandFromClient = RcvQueue(
+            "CommandFromClient", nbits=4, readyvalid=True,
+            data_in   = self.io.offer,
+            valid_in  = self.io.offer_valid,
+            ready_out = self.io.offer_ready
+        );
 
         # NEW style comm
         self.DataFromClient = RcvQueue(
-            "DataFromClient", nbits=16,
+            "DataFromClient", nbits=16, readyvalid=True,
             data_in   = self.io.receive,
             valid_in  = self.io.dfcq_valid,
             ready_out = self.io.dfcq_ready
         );
 
         # OLD style comm (FIXME)
-        self.DataToClient = MessageQueue("DataToClient", nbits=16);
+        # self.DataToClient = MessageQueue("DataToClient", nbits=16);
+        self.DataToClient = Queue("DataToClient", nbits=16, readyvalid=False);
 
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
 
         # Inputs (old style)
-        self.CommandFromClient.I @= self.io.offer
+        # self.CommandFromClient.I @= self.io.offer
 
         # Inputs (not needed w/ new style)
         # self.DataFromClient.I           @= self.io.receive
@@ -383,6 +390,11 @@ class StateMachine(CoopGenerator):
             dfc_ready = m.Bits[1](0)
             # self.DataFromClient.ReadyReg.I @= dfc_ready
             self.DataFromClient.ready @= dfc_ready
+
+
+            offer_ready = m.Bits[1](0)
+            self.CommandFromClient.ready @= offer_ready
+
 
             # State 'MemInit'
             if cur_state == State.MemInit:
@@ -649,3 +661,25 @@ def test_state_machine_fault():
 beep/g'    """)
 
 test_state_machine_fault()
+
+#         tester.print("beep boop sending a command to MC\n")
+# 
+#         # TODO should actually check "READY" wire somewhere...?
+# 
+#         # Set the command
+#         tester.circuit.offer = cmd
+# 
+#         # Mark it valid
+#         valid=1
+#         tester.circuit.offer_valid = m.Bits[1](valid)
+#         
+#         # Wait one cycle for valid signal to propagate
+#         # After which valid signal and valid data should be avail on MC input regs
+#         tester.print("beep boop after one cy valid sig should be avail internally\n")
+#         cycle();
+#         tester.circuit.CommandFromClient_valid.O.expect(valid)
+# 
+# 
+#         # Wait at least one cycle MC to both 1) clock command into its internal reg
+#         # and 2) go to new state (MemOff)
+
