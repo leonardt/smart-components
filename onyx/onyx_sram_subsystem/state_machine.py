@@ -116,6 +116,8 @@ class MessageQueue():
 
     def get(self): return self.Reg.O
 
+    def connect_input(self, wire): self.Reg.I @= wire
+
 
 class StateMachine(CoopGenerator):
 
@@ -159,7 +161,6 @@ class StateMachine(CoopGenerator):
         self.DataFromClient    = MessageQueue("DataFromClient",    nbits=16);
         self.DataToClient      = MessageQueue("DataToClient",      nbits=16);
 
-
     def _connect(self, **kwargs):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
@@ -181,6 +182,11 @@ class StateMachine(CoopGenerator):
         self.DataFromClient.enable(cur_state, State.MemInit)
         self.DataToClient.enable(cur_state, State.Send)
         self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
+
+        def foo(port, data):
+            # self.DataToClient.I   @= data_to_client
+            port @= data
+
 
         # ==============================================================================
         # Note inline_combinational() is not very robust i.e. very particular
@@ -209,7 +215,7 @@ class StateMachine(CoopGenerator):
             if cur_state == State.MemInit:
                 # Receive redundancy: output of receive reg => input of redundancy reg
                 # redundancy_data = self.r_reg.O
-                redundancy_data = self.DataFromClient.O
+                redundancy_data = self.DataFromClient.get()
                 next_state = State.MemOff
 
             # State MemOff
@@ -240,29 +246,25 @@ class StateMachine(CoopGenerator):
                 # Assumes data_from_mem magically appears when addr changes (I guess)
                 elif c == Command.Read:
 
-                    # addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
-                    addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting read]
-
-                    data_to_client = data_from_mem # Send(Data)    [to requesting client]
+                    addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting read]
+                    data_to_client = data_from_mem          # Send(Data)    [to requesting client]
                     next_state = State.MemOn
-
 
                 # WRITE: get address and data from client, send to memory
                 # messages from client arrive via r_reg (receive reg)
+                # Assumes DataFromClient magically chenges when read I guess...?
                 elif c == Command.Write:
-
-                    # addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
-                    addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting mem write]
-
-                    # data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
-                    data = self.DataFromClient.O # Receive(Data) [from client requesting mem write]
-
+                    addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
+                    data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
                     next_state = State.MemOn
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
-            self.DataToClient.I   @= data_to_client
             self.redundancy_reg.I @= redundancy_data
+
+            # "to" MessageQueue inputs
+            self.DataToClient.connect_input(data_to_client)
+
 
 
 def build_verilog():
