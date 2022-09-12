@@ -1,3 +1,7 @@
+# TODO NEXT
+# - continue scrubbing the state machine i guess
+
+
 ##############################################################################
 README='''
 
@@ -110,6 +114,8 @@ class MessageQueue():
         # q.enable(cond)
         self.Reg.CE @= cond
 
+    def get(self): return self.Reg.O
+
 
 class StateMachine(CoopGenerator):
 
@@ -165,42 +171,16 @@ class StateMachine(CoopGenerator):
         # Outputs
         self.io.send             @= self.DataToClient.O
         
-        # Convenient shortcuts
+        # Enable registers *only* in states where regs are used (why?)
         cur_state = self.state_reg.O
-        cmd       = self.CommandFromClient.O
-        rcv_in    = self.DataFromClient.O
-
-        # Enable registers only where needed (why? maybe not strictly necessary?)
-        # TODO can try wiring all enables to 1'b1 and see if anything changes...?
-
-
-        # MemInit uses r_reg, redundancy reg
-        #         self.r_reg.CE          @= (cur_state == State.MemInit)
-
-        #         def hookup(reg, state):
-        #             reg.CE @= (cur_state == state)
-
-
-#         # Enable registers *only* in states where regs are used
-#         def use_reg(reg, state, *more_states):
-#             cond = (cur_state == state)
-#             for s in more_states: cond = cond | (cur_state == s)
-#             reg.CE @= cond
-
         self.redundancy_reg.CE @= (cur_state == State.MemInit)
 
-        # use_reg(self.r_reg, State.MemInit)
+        # Enable queues *only* in states where queues are used (why?)
         # FIXME isn't r_reg also used in MemWrite and MemRead states? For address?
+        cur_state = self.state_reg.O
         self.DataFromClient.enable(cur_state, State.MemInit)
-
-        # use_reg(self.s_reg, State.Send)
         self.DataToClient.enable(cur_state, State.Send)
-
-
-        # States that use CommandFromClient queue
         self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
-
-        # So, @mydecorator is just an easier way of saying myfunc = mydecorator(myfunc)
 
         # ==============================================================================
         # Note inline_combinational() is not very robust i.e. very particular
@@ -215,8 +195,15 @@ class StateMachine(CoopGenerator):
             data_to_client  = m.Bits[16](0)
             redundancy_data = m.Bits[16](0) # changes when we enter meminit state
 
+            # Convenient shortcuts
+            cur_state = self.state_reg.O
+            cmd       = self.CommandFromClient.O
+
             # Dummy value for now
             WakeAcktT       = m.Bits[16](1)
+
+            # Default is to stay in the same state as before
+            next_state = cur_state
 
             # State MemInit
             if cur_state == State.MemInit:
@@ -225,57 +212,56 @@ class StateMachine(CoopGenerator):
                 redundancy_data = self.DataFromClient.O
                 next_state = State.MemOff
 
-            # FIXME MemOff => MemOff transition not tested below (yet)
             # State MemOff
-            elif ((cur_state == State.MemOff) & (cmd == Command.PowerOff)):
-                next_state = State.MemOff
+            elif cur_state == State.MemOff:
+                c = self.CommandFromClient.get()
 
-            # State MemOff
-            elif ((cur_state == State.MemOff) & (cmd == Command.PowerOn)):
-                # Send(WakeAck) [to client requesting power-on]
-                data_to_client = WakeAcktT
-                next_state = State.MemOn
+                # MemOff => MemOn on command PowerOn
+                if (c == Command.PowerOn):
+                    data_to_client = WakeAcktT
+                    next_state = State.MemOn
+
+                # MemOff => MemOff on command PowerOff
+                # Why? By default we will stay in MemOff anyway...?
+                # elif (c == Command.PowerOff): next_state = State.MemOff
 
             # State MemOn
-            elif ((cur_state == State.MemOn) & (cmd == Command.PowerOff)):
-                next_state = State.MemOff
+            elif cur_state == State.MemOn:
+                c = self.CommandFromClient.get()
 
-            elif ((cur_state == State.MemOn) & (cmd == Command.Idle)):
-                next_state = State.MemOn
+                if c == Command.PowerOff:
+                    next_state = State.MemOff
 
-            # READ: get address from client, send back data from mem
-            # Assumes data_from_mem magically appears when addr changes (I guess)
-            elif ((cur_state == State.MemOn) & (cmd == Command.Read)):
+                # Why? By default we will stay in MemOn anyway...?
+                # elif c == Command.Idle:
+                #     next_state = State.MemOn
+
+                # READ: get address from client, send back data from mem
+                # Assumes data_from_mem magically appears when addr changes (I guess)
+                elif c == Command.Read:
+
+                    # addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
+                    addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting read]
+
+                    data_to_client = data_from_mem # Send(Data)    [to requesting client]
+                    next_state = State.MemOn
 
 
+                # WRITE: get address and data from client, send to memory
+                # messages from client arrive via r_reg (receive reg)
+                elif c == Command.Write:
 
-                # addr_to_mem = self.r_reg.O     # Receive(Addr) [from client requesting read]
-                addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting read]
+                    # addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
+                    addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting mem write]
 
+                    # data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
+                    data = self.DataFromClient.O # Receive(Data) [from client requesting mem write]
 
-                data_to_client = data_from_mem # Send(Data)    [to requesting client]
-                next_state = State.MemOn
-
-            # WRITE: get address and data from client, send to memory
-            # messages from client arrive via r_reg (receive reg)
-            elif ((cur_state == State.MemOn) & (cmd == Command.Write)):
-
-                # addr_to_mem = self.r_reg.O      # Receive(Addr) [from client requesting mem write]
-                addr_to_mem = self.DataFromClient.O # Receive(Addr) [from client requesting mem write]
-
-                # data = self.r_reg.O      # Receive(Data) [from client requesting mem write]
-                data = self.DataFromClient.O # Receive(Data) [from client requesting mem write]
-
-                next_state = State.MemOn
-
-            # else: cur_state == cur_state
+                    next_state = State.MemOn
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
-
-            # self.s_reg.I        @= data_to_client
             self.DataToClient.I   @= data_to_client
-
             self.redundancy_reg.I @= redundancy_data
 
 
