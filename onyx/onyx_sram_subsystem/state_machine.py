@@ -149,7 +149,7 @@ class RcvQueue(Queue):
        if DataFromClient.valid == m.Bits[1](1): data = DataFromClient.data
 
     '''
-    def __init__(self, name, nbits, data_in, valid_in, ready_out):
+    def __init__(self, name, nbits, data_in=None, valid_in=None, ready_out=None):
         Queue.__init__(self, name, nbits)
 
         # "We" control ready signal
@@ -161,9 +161,9 @@ class RcvQueue(Queue):
         self.data  = self.Reg.O
 
         # Connect the ports for data, ready, valid to/from client
-        self.Reg.I      @= data_in
-        self.ValidReg.I @= valid_in
-        ready_out       @= self.ReadyReg.O
+        if data_in: self.Reg.I      @= data_in
+        if valid_in: self.ValidReg.I @= valid_in
+        if ready_out: ready_out       @= self.ReadyReg.O
 
 
 # TODO Not plugged in yet
@@ -195,7 +195,7 @@ class XmtQueue(Queue):
        while DataFromClient.ready != m.Bits[1](1): wait()
 
     '''
-    def __init__(self, name, nbits, data_out, valid_out, ready_in):
+    def __init__(self, name, nbits, data_out=None, valid_out=None, ready_in=None):
         Queue.__init__(self, name, nbits)
 
         # "They" control ready signal
@@ -207,15 +207,16 @@ class XmtQueue(Queue):
         self.data  = self.Reg.O=I
 
         # Connect the ports for data, ready, valid to/from client
-        data_out        @= self.Reg.O
-        valid_out       @= self.ValidReg.O
-        self.ReadyReg.I @= ready_in
+        if data_out: data_out        @= self.Reg.O
+        if valid_out: valid_out       @= self.ValidReg.O
+        if ready_in: self.ReadyReg.I @= ready_in
 
         # self.Reg.I      @= data_in
         # self.ValidReg.I @= valid_in
         # ready_out       @= self.ReadyReg.O
 
-
+# Deprecated simple register interface w/o ready/valid
+# to be deleted after code has been updated
 class MessageQueue():
     '''
     Examples:
