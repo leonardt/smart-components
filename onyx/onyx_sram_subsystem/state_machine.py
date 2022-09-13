@@ -370,6 +370,19 @@ class StateMachine(CoopGenerator):
         # about indentation even on comments, also should avoid e.g. one-line
         # if-then ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
+        def foo():
+            receive_ready = m.Bits[1](1)
+
+        def bar():
+                # ValueError: Converting non-constant magma bit to bool not supported
+                # if self.DataFromClient.valid == m.Bits[1](1):
+
+                    # Then grab it and move on (else will remain in same state)
+                    receive_ready = m.Bits[1](0)
+                    return (self.DataFromClient.data,State.MemOff)
+
+
+
         @m.inline_combinational()
         def controller():
 
@@ -403,21 +416,42 @@ class StateMachine(CoopGenerator):
 
             # State 'MemInit'
             if cur_state == State.MemInit:
+
                 # Get redundancy info from client/testbench
 
+                # ------------------------------------------------------------------------
+                # ------------------------------------------------------------------------
+                # ------------------------------------------------------------------------
+                # FIXME/HELPME how do I wrap this into a function???
+                # Something like redundancy_data = get(DataFromClient)
+                # ------------------------------------------------------------------------
                 # Signal that we are ready for input data
-                receive_ready = m.Bits[1](1)
 
+                # receive_ready = m.Bits[1](1)
+                foo()
 
                 # Wait for valid input data
                 if self.DataFromClient.valid == m.Bits[1](1):
-                    # Then grab it and move on (else will remain in same state)
-                    redundancy_data = self.DataFromClient.data
 
-                    receive_ready = m.Bits[1](0)
+                    # # Then grab it and move on (else will remain in same state)
+                    # redundancy_data = self.DataFromClient.data
+                    # receive_ready = m.Bits[1](0)
+                    # ------------------------------------------------------------------------
+                    # next_state = State.MemOff
+
+                    (redundancy_data,next_state) = bar()
+                # ------------------------------------------------------------------------
+                # ------------------------------------------------------------------------
+                # ------------------------------------------------------------------------
 
 
-                    next_state = State.MemOff
+
+
+
+
+
+
+
 
             # State MemOff
             elif cur_state == State.MemOff:
@@ -679,3 +713,15 @@ beep/g'    """)
 
 test_state_machine_fault()
 
+#                 queue = self.DataFromClient
+#                 ready = receive_ready
+#                 valid = queue.valid
+#                 data = queue.data
+#                 move_on = State.MemOff
+# 
+#                 ready = m.Bits[1](1)
+#                 if valid == m.Bits[1](1):
+#                     redundancy_data = data
+#                     ready = m.Bits[1](0)
+#                     next_state = move_on
+# 

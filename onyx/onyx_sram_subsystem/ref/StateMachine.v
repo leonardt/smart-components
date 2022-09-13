@@ -317,7 +317,6 @@ wire [15:0] Mux2xBits16_inst8_O;
 wire [15:0] Mux2xBits16_inst9_O;
 wire [0:0] Mux2xBits1_inst0_O;
 wire [0:0] Mux2xBits1_inst1_O;
-wire [0:0] Mux2xBits1_inst2_O;
 wire [1:0] Mux2xBits2_inst0_O;
 wire [1:0] Mux2xBits2_inst1_O;
 wire [1:0] Mux2xBits2_inst2_O;
@@ -363,7 +362,7 @@ Register_unq2 CommandFromClient (
     .CLK(CLK)
 );
 Register_unq3 CommandFromClient_ready (
-    .I(Mux2xBits1_inst2_O),
+    .I(Mux2xBits1_inst1_O),
     .O(CommandFromClient_ready_O),
     .CLK(CLK)
 );
@@ -487,20 +486,14 @@ Mux2xBits16 Mux2xBits16_inst9 (
 Mux2xBits1 Mux2xBits1_inst0 (
     .I0(const_1_1_out),
     .I1(const_0_1_out),
-    .S(magma_Bits_1_eq_inst0_out),
+    .S(magma_Bits_4_eq_inst0_out),
     .O(Mux2xBits1_inst0_O)
 );
 Mux2xBits1 Mux2xBits1_inst1 (
     .I0(const_1_1_out),
-    .I1(const_0_1_out),
-    .S(magma_Bits_4_eq_inst0_out),
-    .O(Mux2xBits1_inst1_O)
-);
-Mux2xBits1 Mux2xBits1_inst2 (
-    .I0(const_1_1_out),
-    .I1(Mux2xBits1_inst1_O),
+    .I1(Mux2xBits1_inst0_O),
     .S(magma_Bits_1_eq_inst1_out),
-    .O(Mux2xBits1_inst2_O)
+    .O(Mux2xBits1_inst1_O)
 );
 Mux2xBits2 Mux2xBits2_inst0 (
     .I0(state_reg_O),
