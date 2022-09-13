@@ -387,6 +387,8 @@ class StateMachine(CoopGenerator):
             # Default is to stay in the same state as before
             next_state = cur_state
                 
+            # FIXME make sure all ready/valids initialize to ZERO
+
             # Reset all ready-valid signals that we control.
             # self.DataFromClient.ready = m.Bits[1](0); # Not ready for input from client
             # self.DataFromClient.ReadyReg.I = m.Bits[1](0); # Not ready for input from client
