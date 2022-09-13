@@ -389,6 +389,7 @@ class StateMachine(CoopGenerator):
                 
             # FIXME make sure all ready/valids initialize to ZERO (init= in Queue)
 
+            ##############################################################################
             # NOT HERE
             # # Reset all ready-valid signals that we control.
             # # self.DataFromClient.ready = m.Bits[1](0); # Not ready for input from client
@@ -397,6 +398,7 @@ class StateMachine(CoopGenerator):
             # FIXME need a dfcq_ready but not here
             # FIXME dfc_ready => dfcq_ready or maybe vice-versa? 'ready' implies 'q'?
             dfc_ready = m.Bits[1](0)
+            ##############################################################################
 
 
             # State 'MemInit'
@@ -404,7 +406,7 @@ class StateMachine(CoopGenerator):
                 # Get redundancy info from client/testbench
 
                 # Signal that we are ready for input data
-                offer_ready = m.Bits[1](1)
+                receive_ready = m.Bits[1](1)
 
 
                 # Wait for valid input data
@@ -412,7 +414,7 @@ class StateMachine(CoopGenerator):
                     # Then grab it and move on (else will remain in same state)
                     redundancy_data = self.DataFromClient.data
 
-                    offer_ready = m.Bits[1](0)
+                    receive_ready = m.Bits[1](0)
 
 
                     next_state = State.MemOff
@@ -425,11 +427,15 @@ class StateMachine(CoopGenerator):
                 # Original plan was to simply redefine get() when ready/valid
                 # infrastructure was ready; but it's not that simple is it :(
 
+                # Signal that we are ready for a new command
+                offer_ready = m.Bits[1](1)
+
                 # c = self.CommandFromClient.get()
                 if self.CommandFromClient.is_valid():
                     cmd = self.CommandFromClient.data
                     if (cmd == Command.PowerOn):
                         data_to_client = WakeAcktT
+                        offer_ready = m.Bits[1](0)
                         next_state = State.MemOn
 
 
