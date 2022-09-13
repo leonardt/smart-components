@@ -105,6 +105,23 @@ coreir_mux #(
 assign out = _join_out;
 endmodule
 
+module commonlib_muxn__N2__width1 (
+    input [0:0] in_data [1:0]/*verilator public*/,
+    input [0:0] in_sel/*verilator public*/,
+    output [0:0] out/*verilator public*/
+);
+wire [0:0] _join_out;
+coreir_mux #(
+    .width(1)
+) _join (
+    .in0(in_data[0]),
+    .in1(in_data[1]),
+    .sel(in_sel[0]),
+    .out(_join_out)
+);
+assign out = _join_out;
+endmodule
+
 module Register_unq3 (
     input [0:0] I/*verilator public*/,
     output [0:0] O/*verilator public*/,
@@ -247,6 +264,24 @@ coreir_reg #(
 assign O = reg_P16_inst0_out;
 endmodule
 
+module Mux2xBits1 (
+    input [0:0] I0/*verilator public*/,
+    input [0:0] I1/*verilator public*/,
+    input S/*verilator public*/,
+    output [0:0] O/*verilator public*/
+);
+wire [0:0] coreir_commonlib_mux2x1_inst0_out;
+wire [0:0] coreir_commonlib_mux2x1_inst0_in_data [1:0];
+assign coreir_commonlib_mux2x1_inst0_in_data[1] = I1;
+assign coreir_commonlib_mux2x1_inst0_in_data[0] = I0;
+commonlib_muxn__N2__width1 coreir_commonlib_mux2x1_inst0 (
+    .in_data(coreir_commonlib_mux2x1_inst0_in_data),
+    .in_sel(S),
+    .out(coreir_commonlib_mux2x1_inst0_out)
+);
+assign O = coreir_commonlib_mux2x1_inst0_out;
+endmodule
+
 module StateMachine (
     input [15:0] receive/*verilator public*/,
     input [0:0] receive_valid/*verilator public*/,
@@ -280,6 +315,7 @@ wire [15:0] Mux2xBits16_inst6_O;
 wire [15:0] Mux2xBits16_inst7_O;
 wire [15:0] Mux2xBits16_inst8_O;
 wire [15:0] Mux2xBits16_inst9_O;
+wire [0:0] Mux2xBits1_inst0_O;
 wire [1:0] Mux2xBits2_inst0_O;
 wire [1:0] Mux2xBits2_inst1_O;
 wire [1:0] Mux2xBits2_inst2_O;
@@ -325,7 +361,7 @@ Register_unq2 CommandFromClient (
     .CLK(CLK)
 );
 Register_unq3 CommandFromClient_ready (
-    .I(const_0_1_out),
+    .I(Mux2xBits1_inst0_O),
     .O(CommandFromClient_ready_O),
     .CLK(CLK)
 );
@@ -445,6 +481,12 @@ Mux2xBits16 Mux2xBits16_inst9 (
     .I1(Mux2xBits16_inst7_O),
     .S(magma_Bits_2_eq_inst7_out),
     .O(Mux2xBits16_inst9_O)
+);
+Mux2xBits1 Mux2xBits1_inst0 (
+    .I0(const_1_1_out),
+    .I1(const_0_1_out),
+    .S(magma_Bits_1_eq_inst0_out),
+    .O(Mux2xBits1_inst0_O)
 );
 Mux2xBits2 Mux2xBits2_inst0 (
     .I0(state_reg_O),

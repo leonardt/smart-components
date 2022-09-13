@@ -387,14 +387,16 @@ class StateMachine(CoopGenerator):
             # Default is to stay in the same state as before
             next_state = cur_state
                 
-            # FIXME make sure all ready/valids initialize to ZERO
+            # FIXME make sure all ready/valids initialize to ZERO (init= in Queue)
 
-            # Reset all ready-valid signals that we control.
-            # self.DataFromClient.ready = m.Bits[1](0); # Not ready for input from client
-            # self.DataFromClient.ReadyReg.I = m.Bits[1](0); # Not ready for input from client
+            # NOT HERE
+            # # Reset all ready-valid signals that we control.
+            # # self.DataFromClient.ready = m.Bits[1](0); # Not ready for input from client
+            # # self.DataFromClient.ReadyReg.I = m.Bits[1](0); # Not ready for input from client
+
+            # FIXME need a dfcq_ready but not here
+            # FIXME dfc_ready => dfcq_ready or maybe vice-versa? 'ready' implies 'q'?
             dfc_ready = m.Bits[1](0)
-            # self.DataFromClient.ReadyReg.I @= dfc_ready
-            self.DataFromClient.ready @= dfc_ready
 
 
             # State 'MemInit'
@@ -475,6 +477,7 @@ class StateMachine(CoopGenerator):
             self.DataToClient.Reg.I @= data_to_client
 
             self.CommandFromClient.ready @= offer_ready
+            self.DataFromClient.ready @= dfc_ready
 
 
 
