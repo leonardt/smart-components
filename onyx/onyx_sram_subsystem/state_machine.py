@@ -118,6 +118,9 @@ class Queue():
         for s in more_states: cond = cond | (cur_state == s)
         self.Reg.CE @= cond
 
+    def is_valid(self): return (self.valid == m.Bits[1](1))
+
+    # Backward compatibility (TEMPORARY)
     # Until everyone is on board with R/V, use this for backward compatibility
     def get(self): return self.Reg.O
 
@@ -163,8 +166,8 @@ class RcvQueue(Queue):
         self.data  = self.Reg.O
 
         # Connect the ports for data, ready, valid to/from client
-        if data_in: self.Reg.I      @= data_in
-        if valid_in: self.ValidReg.I @= valid_in
+        if data_in:   self.Reg.I      @= data_in
+        if valid_in:  self.ValidReg.I @= valid_in
         if ready_out: ready_out       @= self.ReadyReg.O
 
 
@@ -409,14 +412,19 @@ class StateMachine(CoopGenerator):
             # State MemOff
             elif cur_state == State.MemOff:
 
+                # MemOff => MemOn on command PowerOn
+
                 # Original plan was to simply redefine get() when ready/valid
                 # infrastructure was ready; but it's not that simple is it :(
-                c = self.CommandFromClient.get()
 
-                # MemOff => MemOn on command PowerOn
-                if (c == Command.PowerOn):
-                    data_to_client = WakeAcktT
-                    next_state = State.MemOn
+                # c = self.CommandFromClient.get()
+                if self.CommandFromClient.is_valid():
+                    cmd = self.CommandFromClient.data
+                    if (cmd == Command.PowerOn):
+                        data_to_client = WakeAcktT
+                        next_state = State.MemOn
+
+
 
                 # State diagram says MemOff => MemOff on command PowerOff
                 # But. Why? By default we will stay in MemOff anyway...?
@@ -496,6 +504,12 @@ def test_state_machine_fault():
         # Cy 1: offer => o_reg.O, next_state changes (current_state stays the same)
         # Cy 2: 'next_state' wire clocks into 'current_state' reg
         ncycles=2
+
+
+        # successfully fails if valid=0
+        valid=1
+        tester.circuit.offer_valid = m.Bits[1](valid)
+
         tester.circuit.offer = cmd
 
         # tester.print("beep boop begin: o_reg OUT = command %d\n",
@@ -519,8 +533,10 @@ def test_state_machine_fault():
     tester.print("beep boop testing state_machine circuit\n")
 
     
-    tester.print("beep boop redundancy data not ready so setting dfc valid=0\n");
-    tester.circuit.dfcq_valid = m.Bits[1](0)
+    tester.print("beep boop redundancy data not valid yet so setting dfc valid=0\n");
+    tester.print("beep boop offer not valid yet so setting offer_valid=0\n");
+    tester.circuit.dfcq_valid  = m.Bits[1](0)
+    tester.circuit.offer_valid = m.Bits[1](0)
 
     tester.circuit.current_state.expect(State.MemInit)
     tester.print("beep boop -----------------------------------------------\n")
