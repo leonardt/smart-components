@@ -249,8 +249,8 @@ endmodule
 
 module StateMachine (
     input [15:0] receive/*verilator public*/,
-    input [0:0] dfcq_valid/*verilator public*/,
-    output [0:0] dfcq_ready/*verilator public*/,
+    input [0:0] receive_valid/*verilator public*/,
+    output [0:0] receive_ready/*verilator public*/,
     input [3:0] offer/*verilator public*/,
     input [0:0] offer_valid/*verilator public*/,
     output [0:0] offer_ready/*verilator public*/,
@@ -346,7 +346,7 @@ Register_unq3 DataFromClient_ready (
     .CLK(CLK)
 );
 Register_unq3 DataFromClient_valid (
-    .I(dfcq_valid),
+    .I(receive_valid),
     .O(DataFromClient_valid_O),
     .CLK(CLK)
 );
@@ -686,7 +686,7 @@ Register state_reg (
     .O(state_reg_O),
     .CLK(CLK)
 );
-assign dfcq_ready = DataFromClient_ready_O;
+assign receive_ready = DataFromClient_ready_O;
 assign offer_ready = CommandFromClient_ready_O;
 assign send = DataToClient_O;
 assign current_state = state_reg_O;

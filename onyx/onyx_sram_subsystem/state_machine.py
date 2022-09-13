@@ -139,8 +139,8 @@ class RcvQueue(Queue):
        
        DataFromClient = RcvQueue("DataFromClient", nbits=16,
            data_in   = self.io.receive,
-           valid_in  = self.io.dfcq_valid,
-           ready_out = self.io.dfcq_ready
+           valid_in  = self.io.receive_valid,
+           ready_out = self.io.receive_ready
            );
 
        # To read data from queue:
@@ -273,8 +273,8 @@ class StateMachine(CoopGenerator):
         # dtcq = "data-to-client queue" (i.e. send)
         self.io += m.IO(
             receive=m.In(m.Bits[16]),
-            dfcq_valid = m.In(m.Bits[1]),
-            dfcq_ready = m.Out(m.Bits[1]),
+            receive_valid = m.In(m.Bits[1]),
+            receive_ready = m.Out(m.Bits[1]),
 
             offer=m.In(m.Bits[4]),
             offer_valid = m.In(m.Bits[1]),
@@ -330,8 +330,8 @@ class StateMachine(CoopGenerator):
         self.DataFromClient = RcvQueue(
             "DataFromClient", nbits=16, readyvalid=True,
             data_in   = self.io.receive,
-            valid_in  = self.io.dfcq_valid,
-            ready_out = self.io.dfcq_ready
+            valid_in  = self.io.receive_valid,
+            ready_out = self.io.receive_ready
         );
 
         # OLD style comm (FIXME)
@@ -347,8 +347,8 @@ class StateMachine(CoopGenerator):
 
         # Inputs (not needed w/ new style)
         # self.DataFromClient.I           @= self.io.receive
-        # self.DataFromClient.ValidReg.I  @= self.io.dfcq_valid
-        # self.io.dfcq_ready              @= self.DataFromClient.ReadyReg.O
+        # self.DataFromClient.ValidReg.I  @= self.io.receive_valid
+        # self.io.receive_ready              @= self.DataFromClient.ReadyReg.O
 
         # Outputs (old style)
         self.io.send             @= self.DataToClient.O
@@ -395,18 +395,22 @@ class StateMachine(CoopGenerator):
             self.DataFromClient.ready @= dfc_ready
 
 
-            offer_ready = m.Bits[1](0)
-            self.CommandFromClient.ready @= offer_ready
-
-
             # State 'MemInit'
             if cur_state == State.MemInit:
                 # Get redundancy info from client/testbench
+
+                # Signal that we are ready for input data
+                offer_ready = m.Bits[1](1)
+
 
                 # Wait for valid input data
                 if self.DataFromClient.valid == m.Bits[1](1):
                     # Then grab it and move on (else will remain in same state)
                     redundancy_data = self.DataFromClient.data
+
+                    offer_ready = m.Bits[1](0)
+
+
                     next_state = State.MemOff
 
             # State MemOff
@@ -468,6 +472,11 @@ class StateMachine(CoopGenerator):
             # "to" MessageQueue inputs
             self.DataToClient.Reg.I @= data_to_client
 
+            self.CommandFromClient.ready @= offer_ready
+
+
+
+
 
 def build_verilog():
     FSM = StateMachine()
@@ -496,82 +505,63 @@ def test_state_machine_fault():
 
     # Convenient little shortcut
     # - tester.step(1) is one clock edge
-    # - mycycle() = one complete clock cycle = two clock edges (one pos, one neg)
-    def cycle(): tester.step(2)
+    # - cycle(1) = one complete clock cycle = two clock edges (one pos, one neg)
+    def cycle(n=1): tester.step(2*n)
 
-    def check_transition(cmd, state, ncycles=2):
-        # Because "offer" is registered via "o_reg", takes two cycles to transition
-        # Cy 1: offer => o_reg.O, next_state changes (current_state stays the same)
-        # Cy 2: 'next_state' wire clocks into 'current_state' reg
-        ncycles=2
+    def check_transition(cmd, state):
 
+        # FIXME should check "ready" signal before sending data
+        # something like...? 'while tester.circuit.offer_ready != 1: cycle()'
 
-        # successfully fails if valid=0
+        # successfully fails when/if valid=0
         valid=1
+        tester.circuit.offer = cmd
         tester.circuit.offer_valid = m.Bits[1](valid)
 
-        tester.circuit.offer = cmd
+        # Because "offer" is registered, it takes two cycles to transition
+        # Cy 1: offer => reg, next_state changes (current_state stays the same)
+        # Cy 2: 'next_state' wire clocks into 'current_state' reg
+        # One cycle = two tester steps
+        cycle(2)
 
-        # tester.print("beep boop begin: o_reg OUT = command %d\n",
-        #              tester.circuit.o_reg.O)
-        # tester.print("beep boop begin: current_state = state %d\n",
-        #              tester.circuit.current_state)
-
-        for i in range(ncycles):
-            cycle()
-            # cfmt=f"beep boop cy{i+1}: o_reg OUT = command %d\n"
-            # tester.print(cfmt, tester.circuit.o_reg.O)
-            # sfmt=f"beep boop cy{i+1}: current_state = state %d\n"
-            # tester.print(sfmt, tester.circuit.current_state)
-
+        # Verify arrival at desired state
         tester.circuit.current_state.expect(state)
 
 
+    ########################################################################
     # Tester setup
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
     tester.print("beep boop testing state_machine circuit\n")
 
-    
-    tester.print("beep boop redundancy data not valid yet so setting dfc valid=0\n");
+    tester.print("beep boop tester data not valid yet so setting dfc valid=0\n");
+    tester.circuit.receive_valid  = m.Bits[1](0)
+
     tester.print("beep boop offer not valid yet so setting offer_valid=0\n");
-    tester.circuit.dfcq_valid  = m.Bits[1](0)
     tester.circuit.offer_valid = m.Bits[1](0)
 
+    ########################################################################
+    # Expect to start in state MemInit
     tester.circuit.current_state.expect(State.MemInit)
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop 0 successfully booted in state MemInit maybe\n")
-    tester.print("beep boop waiting two complete clock cycles...\n")
-
-    cycle(); cycle()
-    tester.print("beep boop cannot move on from state MemInit until dfc queue valid\n")
-    tester.circuit.current_state.expect(State.MemInit)
-    tester.print("beep boop 1 still in MemInit\n");
-
-
-    ########################################################################
-    # Start in state MemInit
-    tester.circuit.current_state.expect(State.MemInit)
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop successfully booted in state MemInit maybe\n")
-
-    # Check contents of redundancy_reg
-    # For now, our circuit sets it to zero and we can check that
-    # Later, it will be an unknown quantity supplied by the SRAM
 
     tester.print("beep boop sending redundancy data to MC\n")
 
-    # Send "17" to MC as redundancy data
+    # Send redundancy data, after which state should proceed to MemOff
+    # Send "17" to MC receive-queue as redundancy data
     tester.circuit.receive = m.Bits[16](17)
 
-    # Mark data "valid"
+    # Mark receive-queue (dfcq) data "valid"
     valid=1
-    tester.circuit.dfcq_valid = m.Bits[1](valid)
+    tester.circuit.receive_valid = m.Bits[1](valid)
 
-    # Wait one cycle for valid signal to propagate
+    # FIXME should check "ready" signal before sending data
+
+    # Wait one cycle for recundancy valid signal to propagate
     # After which valid signal and valid data should be avail on MC input regs
     tester.print("beep boop after one cy valid sig should be avail internally\n")
-    cycle();
+    cycle()
     tester.circuit.DataFromClient_valid.O.expect(valid)
 
     
@@ -589,7 +579,7 @@ def test_state_machine_fault():
 
 
     valid=0
-    tester.circuit.dfcq_valid = m.Bits[1](valid)
+    tester.circuit.receive_valid = m.Bits[1](valid)
 
 
 
@@ -612,31 +602,31 @@ def test_state_machine_fault():
     # FIXME why do we need two cycles (4 edges) for this transition?
     # I guess...one cycle for command to propagate from o_reg.I to o_reg.O
     # Plus one cycle for state to move from MemOff to MemOn...?
-    check_transition(Command.PowerOn, State.MemOn, ncycles=2)
+    check_transition(Command.PowerOn, State.MemOn)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Idle\n")
-    check_transition(Command.Idle, State.MemOn, ncycles=1)
+    check_transition(Command.Idle, State.MemOn)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Read\n")
-    check_transition(Command.Read, State.MemOn, ncycles=1)
+    check_transition(Command.Read, State.MemOn)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
-    check_transition(Command.Write, State.MemOn, ncycles=1)
+    check_transition(Command.Write, State.MemOn)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
-    check_transition(Command.PowerOff, State.MemOff, ncycles=2)
+    check_transition(Command.PowerOff, State.MemOff)
     tester.print("beep boop successfully arrived in state MemOff\n")
 
 
@@ -677,25 +667,4 @@ def test_state_machine_fault():
 beep/g'    """)
 
 test_state_machine_fault()
-
-#         tester.print("beep boop sending a command to MC\n")
-# 
-#         # TODO should actually check "READY" wire somewhere...?
-# 
-#         # Set the command
-#         tester.circuit.offer = cmd
-# 
-#         # Mark it valid
-#         valid=1
-#         tester.circuit.offer_valid = m.Bits[1](valid)
-#         
-#         # Wait one cycle for valid signal to propagate
-#         # After which valid signal and valid data should be avail on MC input regs
-#         tester.print("beep boop after one cy valid sig should be avail internally\n")
-#         cycle();
-#         tester.circuit.CommandFromClient_valid.O.expect(valid)
-# 
-# 
-#         # Wait at least one cycle MC to both 1) clock command into its internal reg
-#         # and 2) go to new state (MemOff)
 
