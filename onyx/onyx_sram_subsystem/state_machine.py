@@ -44,6 +44,58 @@ from session import SessionTypeVisitor, SessionT, LabelT
 from util import inverse_look_up, BiMap
 debug("* Done importing python packages...")
 
+# ORIGINAL
+#                 ready_for_dfc = m.Bits[1](1)
+#                 if self.DataFromClient.valid == m.Bits[1](1):
+#                     redundancy_data = self.DataFromClient.data
+#                     ready_for_dfc = m.Bits[1](0)
+#                     next_state = State.MemOff
+
+# PROTOTYPE
+# @m.combinational2()
+# def add(x: m.UInt[16], y: m.UInt[16]) -> m.UInt[16]:
+#         return x + y
+
+# WANT?
+# (ready_for_dfc, redundancy_data, next_state) \
+#     = rvget_and_go(self.DataFromClient, State.MemOff)
+
+# @m.combinational2()
+# def rvget_and_go(
+#         q : RcvQueue,
+#         goto_state : m.Bits[State.nbits],
+# ) -> (
+#     m.Bits[1],           # ready_out
+#     m.Bits[16],          # data_out
+#     m.Bits[State.nbits], # state_out
+# ):
+#     ready_for_dfc = m.Bits[1](1)
+#     if q.valid == m.Bits[1](1):
+#         data = q.data
+#         ready_for_dfc = m.Bits[1](0)
+#         next_state = State.MemOff
+# 
+#     return (ready_for_dfc, data, next_state)
+
+
+#         ##############################################################################
+#         @m.inline_combinational()
+#         def rvget_and_go(
+#                 q : RcvQueue,
+#                 goto_state : m.Bits[State.nbits],
+#         ) -> (
+#             m.Bits[1],           # ready_out
+#             m.Bits[16],          # data_out
+#             m.Bits[State.nbits], # state_out
+#         ):
+#             ready_for_dfc = m.Bits[1](1)
+#             if q.valid == m.Bits[1](1):
+#                 data = q.data
+#                 ready_for_dfc = m.Bits[1](0)
+#                 next_state = State.MemOff
+#                 
+#             return (ready_for_dfc, data, next_state)
+
 #------------------------------------------------------------------------
 class CoopGenerator(m.Generator2):
     def __init__(self, **kwargs):
@@ -146,8 +198,8 @@ class RcvQueue(Queue):
        # To read data from queue:
        
        # 1. Set ready bit for queue to show that we are ready for data.
-       DataFromClient.ready @= dfc_ready
-       dfc_ready = m.Bits[1](1)
+       DataFromClient.ready @= ready_for_dfc
+       ready_for_dfc = m.Bits[1](1)
 
        # 2. Check the valid bit. Grab data iff valid is true.
        if DataFromClient.valid == m.Bits[1](1): data = DataFromClient.data
@@ -371,15 +423,23 @@ class StateMachine(CoopGenerator):
         # if-then ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
         def foo():
-            receive_ready = m.Bits[1](1)
+            ready_for_dfc = m.Bits[1](1)
 
         def bar():
                 # ValueError: Converting non-constant magma bit to bool not supported
                 # if self.DataFromClient.valid == m.Bits[1](1):
 
                     # Then grab it and move on (else will remain in same state)
-                    receive_ready = m.Bits[1](0)
+                    ready_for_dfc = m.Bits[1](0)
                     return (self.DataFromClient.data,State.MemOff)
+
+        ready_for_dfc = m.Bits[1](1)
+
+
+
+        @m.circuit.combinational
+        def rvget_and_go() -> m.Bits[1]:
+            return m.Bits[1](1)
 
 
 
@@ -410,7 +470,7 @@ class StateMachine(CoopGenerator):
 
             # FIXME need a dfcq_ready but not here
             # FIXME dfc_ready => dfcq_ready or maybe vice-versa? 'ready' implies 'q'?
-            dfc_ready = m.Bits[1](0)
+            ready_for_dfc = m.Bits[1](0)
             ##############################################################################
 
 
@@ -419,30 +479,15 @@ class StateMachine(CoopGenerator):
 
                 # Get redundancy info from client/testbench
 
-                # ------------------------------------------------------------------------
-                # ------------------------------------------------------------------------
-                # ------------------------------------------------------------------------
-                # FIXME/HELPME how do I wrap this into a function???
-                # Something like redundancy_data = get(DataFromClient)
-                # ------------------------------------------------------------------------
-                # Signal that we are ready for input data
+                # OLD:
 
-                # receive_ready = m.Bits[1](1)
-                foo()
+                # ready_for_dfc = m.Bits[1](1)
+                ready_for_dfc = rvget_and_go()
 
-                # Wait for valid input data
                 if self.DataFromClient.valid == m.Bits[1](1):
-
-                    # # Then grab it and move on (else will remain in same state)
-                    # redundancy_data = self.DataFromClient.data
-                    # receive_ready = m.Bits[1](0)
-                    # ------------------------------------------------------------------------
-                    # next_state = State.MemOff
-
-                    (redundancy_data,next_state) = bar()
-                # ------------------------------------------------------------------------
-                # ------------------------------------------------------------------------
-                # ------------------------------------------------------------------------
+                    redundancy_data = self.DataFromClient.data
+                    ready_for_dfc = m.Bits[1](0)
+                    next_state = State.MemOff
 
 
 
@@ -517,7 +562,9 @@ class StateMachine(CoopGenerator):
             self.DataToClient.Reg.I @= data_to_client
 
             self.CommandFromClient.ready @= offer_ready
-            self.DataFromClient.ready @= dfc_ready
+
+        self.DataFromClient.ready @= ready_for_dfc
+
 
 
 
@@ -714,7 +761,7 @@ beep/g'    """)
 test_state_machine_fault()
 
 #                 queue = self.DataFromClient
-#                 ready = receive_ready
+#                 ready = ready_for_dfc
 #                 valid = queue.valid
 #                 data = queue.data
 #                 move_on = State.MemOff
@@ -725,3 +772,11 @@ test_state_machine_fault()
 #                     ready = m.Bits[1](0)
 #                     next_state = move_on
 # 
+
+#         @m.circuit.combinational
+#         def basic_if(I: m.Bits[2], S:m.Bit) -> m.Bit:
+#             if S:
+#                 return I[0]
+#             else:
+#                 return I[1]
+
