@@ -422,25 +422,41 @@ class StateMachine(CoopGenerator):
         # about indentation even on comments, also should avoid e.g. one-line
         # if-then ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
-        def foo():
-            ready_for_dfc = m.Bits[1](1)
+        ########################################################################
+        # Utilities for dealing with ready-valid protocol
 
-        def bar():
-                # ValueError: Converting non-constant magma bit to bool not supported
-                # if self.DataFromClient.valid == m.Bits[1](1):
-
-                    # Then grab it and move on (else will remain in same state)
-                    ready_for_dfc = m.Bits[1](0)
-                    return (self.DataFromClient.data,State.MemOff)
-
-        ready_for_dfc = m.Bits[1](1)
-
-
-
+        # If data valid, fetch new data
+        dataT = m.Bits[16]
         @m.circuit.combinational
-        def rvget_and_go() -> m.Bits[1]:
-            return m.Bits[1](1)
+        def rvgetd(
+                valid     : m.Bits[1],
+                cur_data  : dataT,
+                new_data  : dataT) -> m.Bits[16]:
+            #------------------------
+            if valid: return new_data
+            else:     return cur_data
 
+
+        # If data valid, go to new state
+        stateT = m.Bits[State.nbits]
+        @m.circuit.combinational
+        def rvgets(
+                valid      : m.Bits[1],
+                cur_state  : stateT,
+                goto_state : stateT,
+        ) -> m.Bits[State.nbits]:
+            #--------------------------
+            if valid: return goto_state
+            else:     return cur_state
+
+        # If data valid, reset ready signal
+        @m.circuit.combinational
+        def rvgetr(valid : m.Bits[1]) -> m.Bits[1]:
+            ready = m.Bits[1](1)
+            if valid: return ~ready  # Got data, not yet ready for new data
+            else:     return  ready  # Want data but not got data yet, keep signaling "ready"
+
+        ########################################################################
 
 
         @m.inline_combinational()
@@ -470,32 +486,28 @@ class StateMachine(CoopGenerator):
 
             # FIXME need a dfcq_ready but not here
             # FIXME dfc_ready => dfcq_ready or maybe vice-versa? 'ready' implies 'q'?
-            ready_for_dfc = m.Bits[1](0)
+            # ready_for_dfc = m.Bits[1](0)
             ##############################################################################
 
+
+            ready_for_dfc = m.Bits[1](0)
+        
 
             # State 'MemInit'
             if cur_state == State.MemInit:
 
                 # Get redundancy info from client/testbench
+                # If successful, go to goto_state
 
-                # OLD:
+                # Setup
+                v = self.DataFromClient.valid
+                cur_data = redundancy_data
+                goto_state = State.MemOff
 
-                # ready_for_dfc = m.Bits[1](1)
-                ready_for_dfc = rvget_and_go()
-
-                if self.DataFromClient.valid == m.Bits[1](1):
-                    redundancy_data = self.DataFromClient.data
-                    ready_for_dfc = m.Bits[1](0)
-                    next_state = State.MemOff
-
-
-
-
-
-
-
-
+                # Cut'n'paste
+                redundancy_data = rvgetd(v, cur_data, self.DataFromClient.data)
+                next_state      = rvgets(v, cur_state, goto_state)
+                ready_for_dfc   = rvgetr(v)
 
 
             # State MemOff
@@ -563,7 +575,7 @@ class StateMachine(CoopGenerator):
 
             self.CommandFromClient.ready @= offer_ready
 
-        self.DataFromClient.ready @= ready_for_dfc
+            self.DataFromClient.ready @= ready_for_dfc
 
 
 
@@ -779,4 +791,44 @@ test_state_machine_fault()
 #                 return I[0]
 #             else:
 #                 return I[1]
+
+
+#         @m.circuit.combinational
+#         def rvget_and_go(
+#                 valid : m.Bits[1],
+#                 # ----------------------------------------
+#                 cur_data  : m.Bits[16],
+#                 cur_state : m.Bits[State.nbits],
+#                 # ----------------------------------------
+#                 data       : m.Bits[16],
+#                 goto_state : m.Bits[State.nbits],
+#                 # ----------------------------------------
+#         ) -> (
+#             m.Bits[16],                 # data_out
+#             m.Bits[State.nbits],        # next_state
+#             m.Bits[1]                   # ready_out
+#         ):
+#             ready = m.Bits[1](1)
+#             if valid:
+#                 return (data, goto_state, ~ready)
+#             else:
+#                 return (cur_data, cur_state, ready)
+
+#         def foo():
+#             ready_for_dfc = m.Bits[1](1)
+# 
+#         def bar():
+#                 # ValueError: Converting non-constant magma bit to bool not supported
+#                 # if self.DataFromClient.valid == m.Bits[1](1):
+# 
+#                     # Then grab it and move on (else will remain in same state)
+#                     ready_for_dfc = m.Bits[1](0)
+#                     return (self.DataFromClient.data,State.MemOff)
+# 
+
+                # (redundancy_data, next_state, ready_for_dfc)=rvget_and_go(
+                #     dfc.valid,
+                #     cur_data, cur_state,
+                #     dfc.data, goto_state,
+                # )
 

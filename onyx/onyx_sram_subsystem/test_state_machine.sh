@@ -12,7 +12,7 @@ beep/g'
 
 echo ""
 echo "========================================================================"
-echo "Compare verilog-out to previous runs: diff ref/StateMachine.v build/StateMachine.v"
+echo "Compare verilog-out to previous runs: diff ref/StateMachine.v tmpdir/StateMachine.v"
 diff ref/StateMachine.v tmpdir/StateMachine.v && echo PASS || echo FAIL
 
 
