@@ -307,6 +307,8 @@ module StateMachine (
     input [0:0] offer_valid/*verilator public*/,
     output [0:0] offer_ready/*verilator public*/,
     output [15:0] send/*verilator public*/,
+    input [0:0] send_ready/*verilator public*/,
+    output [0:0] send_valid/*verilator public*/,
     output [2:0] current_state/*verilator public*/,
     input CLK/*verilator public*/
 );
@@ -317,10 +319,13 @@ wire [15:0] DataFromClient_O;
 wire [0:0] DataFromClient_ready_O;
 wire [0:0] DataFromClient_valid_O;
 wire [15:0] DataToClient_O;
+wire [0:0] DataToClient_ready_O;
+wire [0:0] DataToClient_valid_O;
 wire [15:0] Mux2xBits16_inst0_O;
 wire [15:0] Mux2xBits16_inst1_O;
 wire [15:0] Mux2xBits16_inst10_O;
 wire [15:0] Mux2xBits16_inst11_O;
+wire [15:0] Mux2xBits16_inst12_O;
 wire [15:0] Mux2xBits16_inst2_O;
 wire [15:0] Mux2xBits16_inst3_O;
 wire [15:0] Mux2xBits16_inst4_O;
@@ -333,6 +338,7 @@ wire [0:0] Mux2xBits1_inst0_O;
 wire [0:0] Mux2xBits1_inst1_O;
 wire [0:0] Mux2xBits1_inst10_O;
 wire [0:0] Mux2xBits1_inst11_O;
+wire [0:0] Mux2xBits1_inst12_O;
 wire [0:0] Mux2xBits1_inst2_O;
 wire [0:0] Mux2xBits1_inst3_O;
 wire [0:0] Mux2xBits1_inst4_O;
@@ -343,6 +349,8 @@ wire [0:0] Mux2xBits1_inst8_O;
 wire [0:0] Mux2xBits1_inst9_O;
 wire [2:0] Mux2xBits3_inst0_O;
 wire [2:0] Mux2xBits3_inst1_O;
+wire [2:0] Mux2xBits3_inst10_O;
+wire [2:0] Mux2xBits3_inst11_O;
 wire [2:0] Mux2xBits3_inst2_O;
 wire [2:0] Mux2xBits3_inst3_O;
 wire [2:0] Mux2xBits3_inst4_O;
@@ -353,6 +361,7 @@ wire [2:0] Mux2xBits3_inst8_O;
 wire [2:0] Mux2xBits3_inst9_O;
 wire [2:0] const_0_3_out;
 wire [3:0] const_0_4_out;
+wire [15:0] const_10066_16_out;
 wire [15:0] const_13_16_out;
 wire [0:0] const_1_1_out;
 wire [15:0] const_1_16_out;
@@ -368,6 +377,7 @@ wire [2:0] const_6_3_out;
 wire magma_Bit_and_inst0_out;
 wire magma_Bit_and_inst1_out;
 wire magma_Bit_and_inst2_out;
+wire magma_Bit_and_inst3_out;
 wire magma_Bit_or_inst0_out;
 wire magma_Bit_or_inst1_out;
 wire magma_Bit_or_inst2_out;
@@ -377,6 +387,8 @@ wire magma_Bits_1_eq_inst1_out;
 wire magma_Bits_1_eq_inst2_out;
 wire magma_Bits_1_eq_inst3_out;
 wire magma_Bits_1_eq_inst4_out;
+wire magma_Bits_1_eq_inst5_out;
+wire magma_Bits_1_eq_inst6_out;
 wire [0:0] magma_Bits_1_not_inst0_out;
 wire [0:0] magma_Bits_1_not_inst1_out;
 wire [0:0] magma_Bits_1_not_inst2_out;
@@ -384,11 +396,14 @@ wire [0:0] magma_Bits_1_not_inst3_out;
 wire [0:0] magma_Bits_1_not_inst4_out;
 wire [0:0] magma_Bits_1_not_inst5_out;
 wire [0:0] magma_Bits_1_not_inst6_out;
+wire [0:0] magma_Bits_1_not_inst7_out;
+wire [0:0] magma_Bits_1_not_inst8_out;
 wire magma_Bits_3_eq_inst0_out;
 wire magma_Bits_3_eq_inst1_out;
 wire magma_Bits_3_eq_inst10_out;
 wire magma_Bits_3_eq_inst11_out;
 wire magma_Bits_3_eq_inst12_out;
+wire magma_Bits_3_eq_inst13_out;
 wire magma_Bits_3_eq_inst2_out;
 wire magma_Bits_3_eq_inst3_out;
 wire magma_Bits_3_eq_inst4_out;
@@ -411,7 +426,7 @@ Register_unq2 CommandFromClient (
     .CLK(CLK)
 );
 Register_unq3 CommandFromClient_ready (
-    .I(Mux2xBits1_inst10_O),
+    .I(Mux2xBits1_inst11_O),
     .O(CommandFromClient_ready_O),
     .CLK(CLK)
 );
@@ -427,7 +442,7 @@ Register_unq1 DataFromClient (
     .CLK(CLK)
 );
 Register_unq3 DataFromClient_ready (
-    .I(Mux2xBits1_inst11_O),
+    .I(Mux2xBits1_inst12_O),
     .O(DataFromClient_ready_O),
     .CLK(CLK)
 );
@@ -437,9 +452,19 @@ Register_unq3 DataFromClient_valid (
     .CLK(CLK)
 );
 Register_unq1 DataToClient (
-    .I(Mux2xBits16_inst10_O),
+    .I(Mux2xBits16_inst11_O),
     .O(DataToClient_O),
     .CE(magma_Bit_or_inst2_out),
+    .CLK(CLK)
+);
+Register_unq3 DataToClient_ready (
+    .I(send_ready),
+    .O(DataToClient_ready_O),
+    .CLK(CLK)
+);
+Register_unq3 DataToClient_valid (
+    .I(const_1_1_out),
+    .O(DataToClient_valid_O),
     .CLK(CLK)
 );
 Mux2xBits16 Mux2xBits16_inst0 (
@@ -461,57 +486,63 @@ Mux2xBits16 Mux2xBits16_inst10 (
     .O(Mux2xBits16_inst10_O)
 );
 Mux2xBits16 Mux2xBits16_inst11 (
+    .I0(Mux2xBits16_inst9_O),
+    .I1(const_13_16_out),
+    .S(magma_Bits_3_eq_inst9_out),
+    .O(Mux2xBits16_inst11_O)
+);
+Mux2xBits16 Mux2xBits16_inst12 (
     .I0(const_13_16_out),
     .I1(Mux2xBits16_inst0_O),
     .S(magma_Bits_3_eq_inst9_out),
-    .O(Mux2xBits16_inst11_O)
+    .O(Mux2xBits16_inst12_O)
 );
 Mux2xBits16 Mux2xBits16_inst2 (
     .I0(const_13_16_out),
     .I1(DataFromClient_O),
-    .S(magma_Bits_4_eq_inst3_out),
+    .S(magma_Bits_1_eq_inst5_out),
     .O(Mux2xBits16_inst2_O)
 );
 Mux2xBits16 Mux2xBits16_inst3 (
-    .I0(Mux2xBits16_inst2_O),
-    .I1(const_13_16_out),
-    .S(magma_Bit_and_inst2_out),
+    .I0(const_13_16_out),
+    .I1(const_10066_16_out),
+    .S(magma_Bits_3_eq_inst13_out),
     .O(Mux2xBits16_inst3_O)
 );
 Mux2xBits16 Mux2xBits16_inst4 (
     .I0(const_13_16_out),
-    .I1(DataFromClient_O),
-    .S(magma_Bits_1_eq_inst4_out),
+    .I1(Mux2xBits16_inst2_O),
+    .S(magma_Bits_3_eq_inst12_out),
     .O(Mux2xBits16_inst4_O)
 );
 Mux2xBits16 Mux2xBits16_inst5 (
-    .I0(const_13_16_out),
-    .I1(Mux2xBits16_inst4_O),
+    .I0(Mux2xBits16_inst3_O),
+    .I1(const_13_16_out),
     .S(magma_Bits_3_eq_inst12_out),
     .O(Mux2xBits16_inst5_O)
 );
 Mux2xBits16 Mux2xBits16_inst6 (
-    .I0(Mux2xBits16_inst5_O),
-    .I1(Mux2xBits16_inst3_O),
+    .I0(Mux2xBits16_inst4_O),
+    .I1(const_13_16_out),
     .S(magma_Bits_3_eq_inst11_out),
     .O(Mux2xBits16_inst6_O)
 );
 Mux2xBits16 Mux2xBits16_inst7 (
-    .I0(Mux2xBits16_inst6_O),
+    .I0(Mux2xBits16_inst5_O),
     .I1(const_13_16_out),
-    .S(magma_Bits_3_eq_inst10_out),
+    .S(magma_Bits_3_eq_inst11_out),
     .O(Mux2xBits16_inst7_O)
 );
 Mux2xBits16 Mux2xBits16_inst8 (
-    .I0(const_13_16_out),
-    .I1(Mux2xBits16_inst1_O),
+    .I0(Mux2xBits16_inst6_O),
+    .I1(const_13_16_out),
     .S(magma_Bits_3_eq_inst10_out),
     .O(Mux2xBits16_inst8_O)
 );
 Mux2xBits16 Mux2xBits16_inst9 (
     .I0(Mux2xBits16_inst7_O),
-    .I1(const_13_16_out),
-    .S(magma_Bits_3_eq_inst9_out),
+    .I1(Mux2xBits16_inst1_O),
+    .S(magma_Bits_3_eq_inst10_out),
     .O(Mux2xBits16_inst9_O)
 );
 Mux2xBits1 Mux2xBits1_inst0 (
@@ -528,20 +559,26 @@ Mux2xBits1 Mux2xBits1_inst1 (
 );
 Mux2xBits1 Mux2xBits1_inst10 (
     .I0(Mux2xBits1_inst8_O),
-    .I1(magma_Bits_1_not_inst1_out),
-    .S(magma_Bits_3_eq_inst9_out),
+    .I1(magma_Bits_1_not_inst0_out),
+    .S(magma_Bits_3_eq_inst10_out),
     .O(Mux2xBits1_inst10_O)
 );
 Mux2xBits1 Mux2xBits1_inst11 (
     .I0(Mux2xBits1_inst9_O),
-    .I1(Mux2xBits1_inst0_O),
+    .I1(magma_Bits_1_not_inst1_out),
     .S(magma_Bits_3_eq_inst9_out),
     .O(Mux2xBits1_inst11_O)
 );
+Mux2xBits1 Mux2xBits1_inst12 (
+    .I0(Mux2xBits1_inst10_O),
+    .I1(Mux2xBits1_inst0_O),
+    .S(magma_Bits_3_eq_inst9_out),
+    .O(Mux2xBits1_inst12_O)
+);
 Mux2xBits1 Mux2xBits1_inst2 (
     .I0(const_1_1_out),
-    .I1(magma_Bits_1_not_inst4_out),
-    .S(magma_Bit_and_inst1_out),
+    .I1(magma_Bits_1_not_inst6_out),
+    .S(magma_Bit_and_inst3_out),
     .O(Mux2xBits1_inst2_O)
 );
 Mux2xBits1 Mux2xBits1_inst3 (
@@ -551,38 +588,38 @@ Mux2xBits1 Mux2xBits1_inst3 (
     .O(Mux2xBits1_inst3_O)
 );
 Mux2xBits1 Mux2xBits1_inst4 (
-    .I0(const_1_1_out),
-    .I1(magma_Bits_1_not_inst6_out),
-    .S(magma_Bits_1_eq_inst4_out),
+    .I0(Mux2xBits1_inst3_O),
+    .I1(magma_Bits_1_not_inst4_out),
+    .S(magma_Bit_and_inst1_out),
     .O(Mux2xBits1_inst4_O)
 );
 Mux2xBits1 Mux2xBits1_inst5 (
-    .I0(magma_Bits_1_not_inst0_out),
-    .I1(Mux2xBits1_inst4_O),
-    .S(magma_Bits_3_eq_inst12_out),
+    .I0(const_1_1_out),
+    .I1(magma_Bits_1_not_inst7_out),
+    .S(magma_Bits_1_eq_inst5_out),
     .O(Mux2xBits1_inst5_O)
 );
 Mux2xBits1 Mux2xBits1_inst6 (
-    .I0(magma_Bits_1_not_inst1_out),
-    .I1(Mux2xBits1_inst3_O),
-    .S(magma_Bits_3_eq_inst11_out),
+    .I0(magma_Bits_1_not_inst0_out),
+    .I1(Mux2xBits1_inst5_O),
+    .S(magma_Bits_3_eq_inst12_out),
     .O(Mux2xBits1_inst6_O)
 );
 Mux2xBits1 Mux2xBits1_inst7 (
-    .I0(Mux2xBits1_inst5_O),
-    .I1(magma_Bits_1_not_inst0_out),
+    .I0(magma_Bits_1_not_inst1_out),
+    .I1(Mux2xBits1_inst4_O),
     .S(magma_Bits_3_eq_inst11_out),
     .O(Mux2xBits1_inst7_O)
 );
 Mux2xBits1 Mux2xBits1_inst8 (
     .I0(Mux2xBits1_inst6_O),
-    .I1(Mux2xBits1_inst1_O),
-    .S(magma_Bits_3_eq_inst10_out),
+    .I1(magma_Bits_1_not_inst0_out),
+    .S(magma_Bits_3_eq_inst11_out),
     .O(Mux2xBits1_inst8_O)
 );
 Mux2xBits1 Mux2xBits1_inst9 (
     .I0(Mux2xBits1_inst7_O),
-    .I1(magma_Bits_1_not_inst0_out),
+    .I1(Mux2xBits1_inst1_O),
     .S(magma_Bits_3_eq_inst10_out),
     .O(Mux2xBits1_inst9_O)
 );
@@ -598,52 +635,64 @@ Mux2xBits3 Mux2xBits3_inst1 (
     .S(magma_Bit_and_inst0_out),
     .O(Mux2xBits3_inst1_O)
 );
+Mux2xBits3 Mux2xBits3_inst10 (
+    .I0(Mux2xBits3_inst9_O),
+    .I1(Mux2xBits3_inst1_O),
+    .S(magma_Bits_3_eq_inst10_out),
+    .O(Mux2xBits3_inst10_O)
+);
+Mux2xBits3 Mux2xBits3_inst11 (
+    .I0(Mux2xBits3_inst10_O),
+    .I1(Mux2xBits3_inst0_O),
+    .S(magma_Bits_3_eq_inst9_out),
+    .O(Mux2xBits3_inst11_O)
+);
 Mux2xBits3 Mux2xBits3_inst2 (
     .I0(state_reg_O),
-    .I1(const_1_3_out),
-    .S(magma_Bit_and_inst1_out),
+    .I1(const_6_3_out),
+    .S(magma_Bit_and_inst3_out),
     .O(Mux2xBits3_inst2_O)
 );
 Mux2xBits3 Mux2xBits3_inst3 (
     .I0(Mux2xBits3_inst2_O),
-    .I1(const_3_3_out),
-    .S(magma_Bits_4_eq_inst3_out),
+    .I1(const_4_3_out),
+    .S(magma_Bit_and_inst2_out),
     .O(Mux2xBits3_inst3_O)
 );
 Mux2xBits3 Mux2xBits3_inst4 (
     .I0(Mux2xBits3_inst3_O),
-    .I1(const_4_3_out),
-    .S(magma_Bit_and_inst2_out),
+    .I1(const_1_3_out),
+    .S(magma_Bit_and_inst1_out),
     .O(Mux2xBits3_inst4_O)
 );
 Mux2xBits3 Mux2xBits3_inst5 (
     .I0(state_reg_O),
     .I1(const_5_3_out),
-    .S(magma_Bits_1_eq_inst4_out),
+    .S(magma_Bits_1_eq_inst5_out),
     .O(Mux2xBits3_inst5_O)
 );
 Mux2xBits3 Mux2xBits3_inst6 (
     .I0(state_reg_O),
-    .I1(Mux2xBits3_inst5_O),
-    .S(magma_Bits_3_eq_inst12_out),
+    .I1(const_3_3_out),
+    .S(magma_Bits_1_eq_inst6_out),
     .O(Mux2xBits3_inst6_O)
 );
 Mux2xBits3 Mux2xBits3_inst7 (
-    .I0(Mux2xBits3_inst6_O),
-    .I1(Mux2xBits3_inst4_O),
-    .S(magma_Bits_3_eq_inst11_out),
+    .I0(state_reg_O),
+    .I1(Mux2xBits3_inst6_O),
+    .S(magma_Bits_3_eq_inst13_out),
     .O(Mux2xBits3_inst7_O)
 );
 Mux2xBits3 Mux2xBits3_inst8 (
     .I0(Mux2xBits3_inst7_O),
-    .I1(Mux2xBits3_inst1_O),
-    .S(magma_Bits_3_eq_inst10_out),
+    .I1(Mux2xBits3_inst5_O),
+    .S(magma_Bits_3_eq_inst12_out),
     .O(Mux2xBits3_inst8_O)
 );
 Mux2xBits3 Mux2xBits3_inst9 (
     .I0(Mux2xBits3_inst8_O),
-    .I1(Mux2xBits3_inst0_O),
-    .S(magma_Bits_3_eq_inst9_out),
+    .I1(Mux2xBits3_inst4_O),
+    .S(magma_Bits_3_eq_inst11_out),
     .O(Mux2xBits3_inst9_O)
 );
 coreir_const #(
@@ -657,6 +706,12 @@ coreir_const #(
     .width(4)
 ) const_0_4 (
     .out(const_0_4_out)
+);
+coreir_const #(
+    .value(16'h2752),
+    .width(16)
+) const_10066_16 (
+    .out(const_10066_16_out)
 );
 coreir_const #(
     .value(16'h000d),
@@ -745,6 +800,11 @@ corebit_and magma_Bit_and_inst2 (
     .in1(magma_Bits_4_eq_inst2_out),
     .out(magma_Bit_and_inst2_out)
 );
+corebit_and magma_Bit_and_inst3 (
+    .in0(magma_Bits_1_eq_inst4_out),
+    .in1(magma_Bits_4_eq_inst3_out),
+    .out(magma_Bit_and_inst3_out)
+);
 corebit_or magma_Bit_or_inst0 (
     .in0(magma_Bits_3_eq_inst2_out),
     .in1(magma_Bits_3_eq_inst3_out),
@@ -796,9 +856,23 @@ coreir_eq #(
 coreir_eq #(
     .width(1)
 ) magma_Bits_1_eq_inst4 (
-    .in0(DataFromClient_valid_O),
+    .in0(CommandFromClient_valid_O),
     .in1(const_1_1_out),
     .out(magma_Bits_1_eq_inst4_out)
+);
+coreir_eq #(
+    .width(1)
+) magma_Bits_1_eq_inst5 (
+    .in0(DataFromClient_valid_O),
+    .in1(const_1_1_out),
+    .out(magma_Bits_1_eq_inst5_out)
+);
+coreir_eq #(
+    .width(1)
+) magma_Bits_1_eq_inst6 (
+    .in0(DataToClient_ready_O),
+    .in1(const_1_1_out),
+    .out(magma_Bits_1_eq_inst6_out)
 );
 coreir_not #(
     .width(1)
@@ -842,6 +916,18 @@ coreir_not #(
     .in(const_1_1_out),
     .out(magma_Bits_1_not_inst6_out)
 );
+coreir_not #(
+    .width(1)
+) magma_Bits_1_not_inst7 (
+    .in(const_1_1_out),
+    .out(magma_Bits_1_not_inst7_out)
+);
+coreir_not #(
+    .width(1)
+) magma_Bits_1_not_inst8 (
+    .in(const_1_1_out),
+    .out(magma_Bits_1_not_inst8_out)
+);
 coreir_eq #(
     .width(3)
 ) magma_Bits_3_eq_inst0 (
@@ -876,6 +962,13 @@ coreir_eq #(
     .in0(state_reg_O),
     .in1(const_4_3_out),
     .out(magma_Bits_3_eq_inst12_out)
+);
+coreir_eq #(
+    .width(3)
+) magma_Bits_3_eq_inst13 (
+    .in0(state_reg_O),
+    .in1(const_5_3_out),
+    .out(magma_Bits_3_eq_inst13_out)
 );
 coreir_eq #(
     .width(3)
@@ -962,25 +1055,26 @@ coreir_eq #(
     .out(magma_Bits_4_eq_inst3_out)
 );
 Register_unq1 mem_addr_reg (
-    .I(Mux2xBits16_inst9_O),
+    .I(Mux2xBits16_inst10_O),
     .O(mem_addr_reg_O),
     .CE(magma_Bits_3_eq_inst1_out),
     .CLK(CLK)
 );
 Register_unq1 redundancy_reg (
-    .I(Mux2xBits16_inst11_O),
+    .I(Mux2xBits16_inst12_O),
     .O(redundancy_reg_O),
     .CE(magma_Bits_3_eq_inst0_out),
     .CLK(CLK)
 );
 Register state_reg (
-    .I(Mux2xBits3_inst9_O),
+    .I(Mux2xBits3_inst11_O),
     .O(state_reg_O),
     .CLK(CLK)
 );
 assign receive_ready = DataFromClient_ready_O;
 assign offer_ready = CommandFromClient_ready_O;
 assign send = DataToClient_O;
+assign send_valid = DataToClient_valid_O;
 assign current_state = state_reg_O;
 endmodule
 
