@@ -422,43 +422,6 @@ class StateMachine(CoopGenerator):
         # about indentation even on comments, also should avoid e.g. one-line
         # if-then ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
-        ########################################################################
-        # Utilities for dealing with ready-valid protocol
-
-        # If data valid, fetch new data
-        dataT = m.Bits[16]
-        @m.circuit.combinational
-        def rvgetd(
-                valid     : m.Bits[1],
-                cur_data  : dataT,
-                new_data  : dataT) -> m.Bits[16]:
-            #------------------------
-            if valid: return new_data
-            else:     return cur_data
-
-
-        # If data valid, go to new state
-        stateT = m.Bits[State.nbits]
-        @m.circuit.combinational
-        def rvgets(
-                valid      : m.Bits[1],
-                cur_state  : stateT,
-                goto_state : stateT,
-        ) -> m.Bits[State.nbits]:
-            #--------------------------
-            if valid: return goto_state
-            else:     return cur_state
-
-        # If data valid, reset ready signal
-        @m.circuit.combinational
-        def rvgetr(valid : m.Bits[1]) -> m.Bits[1]:
-            ready = m.Bits[1](1)
-            if valid: return ~ready  # Got data, not yet ready for new data
-            else:     return  ready  # Want data but not got data yet, keep signaling "ready"
-
-        ########################################################################
-
-
         @m.inline_combinational()
         def controller():
 
@@ -490,8 +453,12 @@ class StateMachine(CoopGenerator):
             ##############################################################################
 
 
-            ready_for_dfc = m.Bits[1](0)
-        
+            READY = m.Bits[1](1)
+            ready_for_dfc = ~READY
+            ready_for_cmd = ~READY
+
+            cfc = self.CommandFromClient
+            dfc = self.DataFromClient
 
             # State 'MemInit'
             if cur_state == State.MemInit:
@@ -500,14 +467,13 @@ class StateMachine(CoopGenerator):
                 # If successful, go to goto_state
 
                 # Setup
-                v = self.DataFromClient.valid
-                cur_data = redundancy_data
-                goto_state = State.MemOff
+                goto_state = State.MemOff    # Go to this state when/if successful
+                ready_for_dfc = READY        # Ready for new data
 
-                # Cut'n'paste
-                redundancy_data = rvgetd(v, cur_data, self.DataFromClient.data)
-                next_state      = rvgets(v, cur_state, goto_state)
-                ready_for_dfc   = rvgetr(v)
+                if dfc.is_valid():
+                    redundancy_data = dfc.data
+                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    next_state = goto_state
 
 
             # State MemOff
@@ -515,19 +481,15 @@ class StateMachine(CoopGenerator):
 
                 # MemOff => MemOn on command PowerOn
 
-                # Original plan was to simply redefine get() when ready/valid
-                # infrastructure was ready; but it's not that simple is it :(
+                # Setup
+                want_cmd   = Command.PowerOn # Must be in this state to trigger action
+                goto_state = State.MemOn     # Go to this state when/if successful
+                ready_for_cmd = READY        # Ready for new data
 
-                # Signal that we are ready for a new command
-                offer_ready = m.Bits[1](1)
-
-                # c = self.CommandFromClient.get()
-                if self.CommandFromClient.is_valid():
-                    cmd = self.CommandFromClient.data
-                    if (cmd == Command.PowerOn):
-                        data_to_client = WakeAcktT
-                        offer_ready = m.Bits[1](0)
-                        next_state = State.MemOn
+                if cfc.is_valid() & (cfc.data == want_cmd):
+                    data_to_client = WakeAcktT
+                    ready_for_cmd = ~READY     # Got data, not yet ready for next command
+                    next_state = goto_state    
 
 
 
@@ -573,7 +535,7 @@ class StateMachine(CoopGenerator):
             # "to" MessageQueue inputs
             self.DataToClient.Reg.I @= data_to_client
 
-            self.CommandFromClient.ready @= offer_ready
+            self.CommandFromClient.ready @= ready_for_cmd
 
             self.DataFromClient.ready @= ready_for_dfc
 
@@ -831,4 +793,62 @@ test_state_machine_fault()
                 #     cur_data, cur_state,
                 #     dfc.data, goto_state,
                 # )
+
+
+
+#                                 # Cut'n'paste
+# 
+#                 # if valid, redundancy_datay = new data from dfc queue
+#                 redundancy_data = rvgetd(v, cur_data, self.DataFromClient.data)
+# 
+#                 # if valid, next_state = goto_state
+#                 next_state      = rvgets(v, cur_state, goto_state)
+# 
+#                 # if valid, reset ready=0, else set ready=1
+#                 ready_for_dfc   = rvgetr(v)
+# 
+
+
+
+#         ########################################################################
+#         # Utilities for dealing with ready-valid protocol
+# 
+#         # If data valid and command correct, fetch 
+# 
+# 
+#         # If data valid, fetch new data
+#         dataT = m.Bits[16]
+#         @m.circuit.combinational
+#         def rvgetd(
+#                 valid     : m.Bits[1],
+#                 cur_data  : dataT,
+#                 new_data  : dataT) -> m.Bits[16]:
+#             #------------------------
+#             if valid: return new_data
+#             else:     return cur_data
+# 
+# 
+#         # If data valid, go to new state
+#         stateT = m.Bits[State.nbits]
+#         @m.circuit.combinational
+#         def rvgets(
+#                 valid      : m.Bits[1],
+#                 cur_state  : stateT,
+#                 goto_state : stateT,
+#         ) -> m.Bits[State.nbits]:
+#             #--------------------------
+#             if valid: return goto_state
+#             else:     return cur_state
+# 
+#         # If data valid, reset ready signal
+#         @m.circuit.combinational
+#         def rvgetr(valid : m.Bits[1]) -> m.Bits[1]:
+#             ready = m.Bits[1](1)
+#             if valid: return ~ready  # Got data, not yet ready for new data
+#             else:     return  ready  # Want data but not got data yet, keep signaling "ready"
+# 
+#         ########################################################################
+
+
+
 
