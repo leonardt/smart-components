@@ -166,13 +166,13 @@ class Queue():
 
         # if port != None: self.Reg.I @= port
 
-    # Convenience function; given a 'cur_state' wire and some states
+    # Convenience function; given a 'state_reg' wire and some states
     # (constants), enable the register ONLY when in those states
     # This probably builds terrible RTL, but with any luck the
     # downstream tools will optimize easily...
-    def enable(self, cur_state, state, *more_states):
-        cond = (cur_state == state)
-        for s in more_states: cond = cond | (cur_state == s)
+    def enable(self, state_reg, state, *more_states):
+        cond = (state_reg == state)
+        for s in more_states: cond = cond | (state_reg == s)
         self.Reg.CE @= cond
 
     def is_valid(self): return (self.valid == m.Bits[1](1))
@@ -295,8 +295,8 @@ class MessageQueue():
       OLD: self.o_reg.I             @= self.io.offer
       NEW: self.CommandFromClient.I @= self.io.offer
 
-      OLD: self.o_reg.CE @= ((cur_state == State.MemOff) | (cur_state == State.MemOn))
-      NEW: self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
+      OLD: self.o_reg.CE @= ((state_reg == State.MemOff) | (state_reg == State.MemOn))
+      NEW: self.CommandFromClient.enable(state_reg, State.MemOff, State.MemOn)
 
     '''
 
@@ -307,9 +307,9 @@ class MessageQueue():
         self.I = self.Reg.I
         self.O = self.Reg.O
 
-    def enable(self, cur_state, state, *more_states):
-        cond = (cur_state == state)
-        for s in more_states: cond = cond | (cur_state == s)
+    def enable(self, state_reg, state, *more_states):
+        cond = (state_reg == state)
+        for s in more_states: cond = cond | (state_reg == s)
         # self.Reg.CE @= cond
         # q.enable(cond)
         self.Reg.CE @= cond
@@ -423,18 +423,19 @@ class StateMachine(CoopGenerator):
         self.io.send             @= self.DataToClient.O
         
         # Enable registers *only* in states where regs are used (why?)
-        cur_state = self.state_reg.O
-        self.redundancy_reg.CE @= (cur_state == State.MemInit)
-        self.mem_addr_reg.CE   @= (cur_state == State.ReadAddr)
+        state_reg = self.state_reg.O
+        self.redundancy_reg.CE @= (state_reg == State.MemInit)
+        self.mem_addr_reg.CE   @= (state_reg == State.ReadAddr)
 
 
         # Enable queues *only* in states where queues are used (why?)
         # FIXME isn't DFC also used in MemWrite and MemRead states? For address?
         # Also DTC? FIXME Why is this working???
-        cur_state = self.state_reg.O
-        self.DataFromClient.enable(   cur_state, State.MemInit)
-        self.DataToClient.enable(     cur_state, State.Send)
-        self.CommandFromClient.enable(cur_state, State.MemOff, State.MemOn)
+        self.DataFromClient.enable(state_reg, 
+            State.MemInit, State.ReadAddr, State.Write
+        )
+        self.DataToClient.enable(     state_reg, State.Send, State.ReadData)
+        self.CommandFromClient.enable(state_reg, State.MemOff, State.MemOn)
 
         # ==============================================================================
         # Note inline_combinational() is not very robust i.e. very particular
@@ -642,36 +643,41 @@ def test_state_machine_fault():
         # Verify arrival at desired state
         tester.circuit.current_state.expect(state)
 
-    def send_and_check_data(dval, reg_name, reg):
-        
-        # Send dval to MC receive-queue as redundancy data
+    def send_and_check_dfc_data(dval, reg_name, reg):
+
+        # Send dval to MC receive-queue as "DataFromClient" data
         tester.circuit.receive = m.Bits[16](dval)
 
         # Mark receive-queue (dfc/DataFromQueue) data "valid"
         tester.print("beep boop ...sending valid signal\n")
-        valid=1
-        tester.circuit.receive_valid = m.Bits[1](valid)
+        VALID = 1
+        tester.circuit.receive_valid = VALID
 
         # FIXME should check "ready" signal before sending data
 
-        # Wait one cycle for data-valid signal to propagate
+        # Wait one cycle for valid signal to propagate
         # After which valid signal and valid data should be avail on MC input regs
         tester.print("beep boop ...after one cy valid sig should be avail internally\n")
         cycle()
-        tester.circuit.DataFromClient_valid.O.expect(valid)
+        tester.circuit.DataFromClient_valid.O.expect(VALID)
 
+        # Sanity check of reg-enable signal
+        tester.print("beep boop ...CE better be active (CE=1)\n")
+        tester.circuit.DataFromClient.CE.expect(1)
+
+        # Reset valid signal
+        tester.print("beep boop ...reset valid signal\n")
+        tester.circuit.receive_valid = ~VALID
+
+        # Wait one cycle MC to clock data in, and goto new state
         tester.print("beep boop ...one more cy to latch data and move to new state\n")
-        # Wait one cycle MC to both 1) clock data into its internal reg
-        # and 2) go to new state
         cycle()
 
-        tester.print(f"beep boop received {reg_name} data '%d' == {dval} == 0x{dval:x}\n", reg.O)
+        # Check latched data for correctness
+        msg = f"received {reg_name} data '%d' ==? {dval} (0x{dval:x})"
+        tester.print(f"beep boop {msg}\n", reg.O)
         reg.O.expect(dval)
-        tester.print(f"beep boop ...passed initial {reg_name} data check\n")
-
-        tester.print("beep boop ...reset valid signal\n")
-        valid=0
-        tester.circuit.receive_valid = m.Bits[1](valid)
+        tester.print(f"beep boop ...yes! passed initial {reg_name} data check\n")
 
 
     ########################################################################
@@ -711,9 +717,8 @@ def test_state_machine_fault():
     tester.circuit.DataFromClient_valid.O.expect(valid)
 
 
-    tester.circuit.receive = m.Bits[16](6)
 
-
+    # tester.circuit.receive = m.Bits[16](66)
 
     
     # Wait one cycle MC to both 1) clock data into its internal reg
@@ -729,8 +734,13 @@ def test_state_machine_fault():
     tester.print("beep boop passed initial redundancy data check\n")
 
 
+
+
     valid=0
     tester.circuit.receive_valid = m.Bits[1](valid)
+
+
+
 
 
 
@@ -762,6 +772,7 @@ def test_state_machine_fault():
     check_transition(Command.Idle, State.MemOn)
     tester.print("beep boop successfully arrived in state MemOn\n")
 
+
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
@@ -781,12 +792,13 @@ def test_state_machine_fault():
     tester.print("beep boop successfully arrived in state ReadAddr\n")
 
     ########################################################################
+    maddr = 66
     tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop Check receive mem addr '6'\n")
+    tester.print(f"beep boop Check receive mem addr '{maddr}'\n")
 
     # Send mem_addr data, after which state should proceed to MemOff
-    send_and_check_data(6, "mem_addr", tester.circuit.mem_addr_reg)
-
+    send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
+        
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Verify arrival in state ReadData\n")
@@ -795,11 +807,10 @@ def test_state_machine_fault():
 
 
 
-
-
-
-
-
+# bookmark
+##############################################################################
+##############################################################################
+##############################################################################
 
 
 #     ########################################################################
@@ -853,122 +864,4 @@ def test_state_machine_fault():
 beep/g'    """)
 
 test_state_machine_fault()
-
-#                 queue = self.DataFromClient
-#                 ready = ready_for_dfc
-#                 valid = queue.valid
-#                 data = queue.data
-#                 move_on = State.MemOff
-# 
-#                 ready = m.Bits[1](1)
-#                 if valid == m.Bits[1](1):
-#                     redundancy_data = data
-#                     ready = m.Bits[1](0)
-#                     next_state = move_on
-# 
-
-#         @m.circuit.combinational
-#         def basic_if(I: m.Bits[2], S:m.Bit) -> m.Bit:
-#             if S:
-#                 return I[0]
-#             else:
-#                 return I[1]
-
-
-#         @m.circuit.combinational
-#         def rvget_and_go(
-#                 valid : m.Bits[1],
-#                 # ----------------------------------------
-#                 cur_data  : m.Bits[16],
-#                 cur_state : m.Bits[State.nbits],
-#                 # ----------------------------------------
-#                 data       : m.Bits[16],
-#                 goto_state : m.Bits[State.nbits],
-#                 # ----------------------------------------
-#         ) -> (
-#             m.Bits[16],                 # data_out
-#             m.Bits[State.nbits],        # next_state
-#             m.Bits[1]                   # ready_out
-#         ):
-#             ready = m.Bits[1](1)
-#             if valid:
-#                 return (data, goto_state, ~ready)
-#             else:
-#                 return (cur_data, cur_state, ready)
-
-#         def foo():
-#             ready_for_dfc = m.Bits[1](1)
-# 
-#         def bar():
-#                 # ValueError: Converting non-constant magma bit to bool not supported
-#                 # if self.DataFromClient.valid == m.Bits[1](1):
-# 
-#                     # Then grab it and move on (else will remain in same state)
-#                     ready_for_dfc = m.Bits[1](0)
-#                     return (self.DataFromClient.data,State.MemOff)
-# 
-
-                # (redundancy_data, next_state, ready_for_dfc)=rvget_and_go(
-                #     dfc.valid,
-                #     cur_data, cur_state,
-                #     dfc.data, goto_state,
-                # )
-
-
-
-#                                 # Cut'n'paste
-# 
-#                 # if valid, redundancy_datay = new data from dfc queue
-#                 redundancy_data = rvgetd(v, cur_data, self.DataFromClient.data)
-# 
-#                 # if valid, next_state = goto_state
-#                 next_state      = rvgets(v, cur_state, goto_state)
-# 
-#                 # if valid, reset ready=0, else set ready=1
-#                 ready_for_dfc   = rvgetr(v)
-# 
-
-
-
-#         ########################################################################
-#         # Utilities for dealing with ready-valid protocol
-# 
-#         # If data valid and command correct, fetch 
-# 
-# 
-#         # If data valid, fetch new data
-#         dataT = m.Bits[16]
-#         @m.circuit.combinational
-#         def rvgetd(
-#                 valid     : m.Bits[1],
-#                 cur_data  : dataT,
-#                 new_data  : dataT) -> m.Bits[16]:
-#             #------------------------
-#             if valid: return new_data
-#             else:     return cur_data
-# 
-# 
-#         # If data valid, go to new state
-#         stateT = m.Bits[State.nbits]
-#         @m.circuit.combinational
-#         def rvgets(
-#                 valid      : m.Bits[1],
-#                 cur_state  : stateT,
-#                 goto_state : stateT,
-#         ) -> m.Bits[State.nbits]:
-#             #--------------------------
-#             if valid: return goto_state
-#             else:     return cur_state
-# 
-#         # If data valid, reset ready signal
-#         @m.circuit.combinational
-#         def rvgetr(valid : m.Bits[1]) -> m.Bits[1]:
-#             ready = m.Bits[1](1)
-#             if valid: return ~ready  # Got data, not yet ready for new data
-#             else:     return  ready  # Want data but not got data yet, keep signaling "ready"
-# 
-#         ########################################################################
-
-
-
 
