@@ -85,11 +85,11 @@ class State():
     num_states = 7; i=0
     nbits = (num_states-1).bit_length()
     #----------------------------------
-    MemInit  = m.Bits[nbits](i); i=i+1
-    MemOff   = m.Bits[nbits](i); i=i+1
-    Send     = m.Bits[nbits](i); i=i+1 # currently unused maybe
-    MemOn    = m.Bits[nbits](i); i=i+1
-    ReadAddr = m.Bits[nbits](i); i=i+1 # currently unused maybe
+    MemInit  = m.Bits[nbits](i); i=i+1 # 0
+    MemOff   = m.Bits[nbits](i); i=i+1 # 1
+    Send     = m.Bits[nbits](i); i=i+1 # 2
+    MemOn    = m.Bits[nbits](i); i=i+1 # 3
+    ReadAddr = m.Bits[nbits](i); i=i+1 # 4
     ReadData = m.Bits[nbits](i); i=i+1 # currently unused maybe
     Write    = m.Bits[nbits](i); i=i+1 # currently unused maybe
 
@@ -448,6 +448,7 @@ class StateMachine(CoopGenerator):
 
             cfc = self.CommandFromClient
             dfc = self.DataFromClient
+            dtc = self.DataToClient
 
             # State 'MemInit'
             if cur_state == State.MemInit:
@@ -551,9 +552,12 @@ class StateMachine(CoopGenerator):
                 dtc_data_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
-                if self.DataToClient.is_ready():
-                    dtc_dta_valid = ~VALID
-                    next_state = State.MemOn
+                # if self.DataToClient.is_ready():
+                # if dtc.is_ready():
+                # if dtc.ReadyReg.O == m.Bits[1](0):
+                dtc_dta_valid = ~VALID
+                # next_state = State.MemOn
+                next_state = m.Bits[3](3)
 
 
 
@@ -630,6 +634,12 @@ def test_state_machine_fault():
         # Verify arrival at desired state
         tester.circuit.current_state.expect(state)
 
+        # WITHDRAW THE OFFER!!!
+        tester.circuit.offer_valid = m.Bits[1](0)
+
+
+
+
     def send_and_check_dfc_data(dval, reg_name, reg):
 
         # Send dval to MC receive-queue as "DataFromClient" data
@@ -682,7 +692,7 @@ def test_state_machine_fault():
         tester.circuit.DataToClient_ready.O.expect(READY)
 
         # Wait for MC to signal valid data
-        tester.circuit.send_valid.expect(READY)
+        tester.circuit.send_valid.expect(VALID)
         tester.print("beep boop ...found send_valid TRUE...\n")
 
 
@@ -697,6 +707,17 @@ def test_state_machine_fault():
         tester.print(f"beep boop {msg}\n",  reg.O)
         reg.O.expect(dval)
         tester.print(f"beep boop ...yes! passed data check\n")
+
+
+
+        
+        tester.print(f"beep boop still expect ready=1\n")
+        tester.circuit.DataToClient_ready.O.expect(READY)
+
+
+        # reset ready signal i guess
+        tester.circuit.send_ready = ~READY
+
 
 
     ########################################################################
@@ -788,8 +809,23 @@ def test_state_machine_fault():
     wantdata = 10066
     tester.print("beep boop -----------------------------------------------\n")
     tester.print(f"beep boop Check that MC sent data '{wantdata}'\n")
+    get_and_check_dtc_data(wantdata)
 
-    get_and_check_dtc_data(10066)
+
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Verify arrival in state MemOn\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    tester.print("beep boop ...CORRECT!\n")
+
+
+    cycle()
+
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Verify *still* in state MemOn\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    tester.print("beep boop ...CORRECT!\n")
+
+
 
 
 
