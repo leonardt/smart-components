@@ -128,13 +128,18 @@ class Command():
 
 class State():
     #----------------------------------
-    num_states = 4; i=0
+    num_states = 7; i=0
     nbits = (num_states-1).bit_length()
     #----------------------------------
-    MemInit = m.Bits[nbits](i); i=i+1
-    MemOff  = m.Bits[nbits](i); i=i+1
-    Send    = m.Bits[nbits](i); i=i+1 # currently unused maybe
-    MemOn   = m.Bits[nbits](i); i=i+1
+    MemInit  = m.Bits[nbits](i); i=i+1
+    MemOff   = m.Bits[nbits](i); i=i+1
+    Send     = m.Bits[nbits](i); i=i+1 # currently unused maybe
+    MemOn    = m.Bits[nbits](i); i=i+1
+    ReadAddr = m.Bits[nbits](i); i=i+1 # currently unused maybe
+    ReadData = m.Bits[nbits](i); i=i+1 # currently unused maybe
+    Write    = m.Bits[nbits](i); i=i+1 # currently unused maybe
+
+
 
 class Queue():
     '''A way to pass messages between ourself and others. Depending on
@@ -261,11 +266,11 @@ class XmtQueue(Queue):
         # "We" control valid signal and data
         # (valid and data got to queue in-port)
         self.valid = self.ValidReg.I
-        self.data  = self.Reg.O=I
+        self.data  = self.Reg.O=I      # ??? was is loss '=I'
 
         # Connect the ports for data, ready, valid to/from client
         if data_out: data_out        @= self.Reg.O
-        if valid_out: valid_out       @= self.ValidReg.O
+        if valid_out: valid_out      @= self.ValidReg.O
         if ready_in: self.ReadyReg.I @= ready_in
 
         # self.Reg.I      @= data_in
@@ -336,7 +341,7 @@ class StateMachine(CoopGenerator):
             # dtcq_valid = m.In(m.Bits[1]),  TBD
             # dtcq_ready = m.Out(m.Bits[1]), TBD
 
-            current_state=m.Out(m.Bits[2]),
+            current_state=m.Out(m.Bits[State.nbits]),
         )
 
     def _decl_components(self, **kwargs):
@@ -356,6 +361,18 @@ class StateMachine(CoopGenerator):
             has_enable=True,
         )()
         self.redundancy_reg.name = "redundancy_reg"
+
+
+        # mem_addr reg holds mem_addr data from ?client? for future ref
+        # self.mem_addr_reg = reg("mem_addr_reg", nbits=16); # "mem_addr" reg
+        self.mem_addr_reg = m.Register(
+            T=m.Bits[16],
+            has_enable=True,
+        )()
+        self.mem_addr_reg.name = "mem_addr_reg"
+
+
+
 
         # Instead of registers to transfer info, now have message queues.
         # Coming soon: ready-valid protocol
@@ -408,6 +425,8 @@ class StateMachine(CoopGenerator):
         # Enable registers *only* in states where regs are used (why?)
         cur_state = self.state_reg.O
         self.redundancy_reg.CE @= (cur_state == State.MemInit)
+        self.mem_addr_reg.CE   @= (cur_state == State.ReadAddr)
+
 
         # Enable queues *only* in states where queues are used (why?)
         # FIXME isn't DFC also used in MemWrite and MemRead states? For address?
@@ -479,19 +498,13 @@ class StateMachine(CoopGenerator):
             # State MemOff
             elif cur_state == State.MemOff:
 
-                # MemOff => MemOn on command PowerOn
+                # MemOff * PowerOn => goto MemOn
 
-                # Setup
-                want_cmd   = Command.PowerOn # Must be in this state to trigger action
-                goto_state = State.MemOn     # Go to this state when/if successful
-                ready_for_cmd = READY        # Ready for new data
-
-                if cfc.is_valid() & (cfc.data == want_cmd):
+                ready_for_cmd = READY
+                if cfc.is_valid() & (cfc.data == Command.PowerOn):
                     data_to_client = WakeAcktT
                     ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                    next_state = goto_state    
-
-
+                    next_state = State.MemOn
 
                 # State diagram says MemOff => MemOff on command PowerOff
                 # But. Why? By default we will stay in MemOff anyway...?
@@ -501,36 +514,72 @@ class StateMachine(CoopGenerator):
 
             # State MemOn
             elif cur_state == State.MemOn:
-                c = self.CommandFromClient.get()
 
-                if c == Command.PowerOff:
+                ready_for_cmd = READY
+
+                # MemOn & PowerOff => goto MemOff
+
+                if cfc.is_valid() & (cfc.data == Command.PowerOff):
+                    ready_for_cmd = ~READY     # Got data, not yet ready for next command
                     next_state = State.MemOff
 
-                # State diagram says check for idle command. But.
-                # Why? By default we will stay in MemOn anyway...?
-                # FIXME will client freak out if no ack command? grumble grumble
-                # elif c == Command.Idle:
-                #     next_state = State.MemOn
 
+
+
+                # TODO oops time for new state diagram innit
+
+                # MemOn & Read => readmem & goto ReadAddr
+                # 
                 # READ: get address from client, send back data from mem
                 # Assumes data_from_mem magically appears when addr changes (I guess)
-                elif c == Command.Read:
 
-                    addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting read]
-                    data_to_client = data_from_mem          # Send(Data)    [to requesting client]
-                    next_state = State.MemOn
+                if cfc.is_valid() & (cfc.data == Command.Read):
+
+                    ready_for_cmd = ~READY                  # Got data, not yet ready for next command
+                    next_state = State.ReadAddr
+
+                    # These now belong to state Read Addr etc. (right???)
+                    # addr_to_mem = dfc.data                  # Receive(Addr) [from client requesting read]
+                    # data_to_client = data_from_mem          # Send(Data)    [to requesting client]
+
+
+
+                # MemOn & Read => writemem & goto MemOff
+
+
+
 
                 # WRITE: get address and data from client, send to memory
                 # messages from client arrive via r_reg (receive reg)
                 # Assumes DataFromClient magically chenges when read I guess...?
-                elif c == Command.Write:
+                elif cfc.data == Command.Write:
                     addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
                     data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
                     next_state = State.MemOn
 
+
+            # State ReadAddr
+            elif cur_state == State.ReadAddr:
+
+                # Get read-address info from client/testbench
+                # If successful, go to state ReadData
+
+                ready_for_dfc = READY        # Ready for new data
+                if dfc.is_valid():
+                    addr_to_mem = dfc.data                  # Receive(Addr) [from client requesting read]
+                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    next_state = State.ReadData
+
+
+
+
+
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
             self.redundancy_reg.I @= redundancy_data
+
+            self.mem_addr_reg.I @= addr_to_mem
+
 
             # "to" MessageQueue inputs
             self.DataToClient.Reg.I @= data_to_client
@@ -630,6 +679,11 @@ def test_state_machine_fault():
     cycle()
     tester.circuit.DataFromClient_valid.O.expect(valid)
 
+
+    tester.circuit.receive = m.Bits[16](6)
+
+
+
     
     # Wait one cycle MC to both 1) clock data into its internal reg
     # and 2) go to new state (MemOff)
@@ -679,21 +733,121 @@ def test_state_machine_fault():
 
     ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOn => MemOn on command Read\n")
-    check_transition(Command.Read, State.MemOn)
-    tester.print("beep boop successfully arrived in state MemOn\n")
-
-    ########################################################################
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
-    check_transition(Command.Write, State.MemOn)
-    tester.print("beep boop successfully arrived in state MemOn\n")
-
-    ########################################################################
-    tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
     check_transition(Command.PowerOff, State.MemOff)
     tester.print("beep boop successfully arrived in state MemOff\n")
+
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOff => MemOn on command PowerOn\n")
+    check_transition(Command.PowerOn, State.MemOn)
+    tester.print("beep boop successfully arrived in state MemOn\n")
+
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOn => ReadAddr on command Read\n")
+    check_transition(Command.Read, State.ReadAddr)
+    tester.print("beep boop successfully arrived in state ReadAddr\n")
+
+
+    # Send redundancy data, after which state should proceed to MemOff
+    # Send "17" to MC receive-queue as redundancy data
+    tester.circuit.receive = m.Bits[16](6)
+
+    # Mark receive-queue (dfcq) data "valid"
+    valid=1
+    tester.circuit.receive_valid = m.Bits[1](valid)
+
+    # FIXME should check "ready" signal before sending data
+
+    # Wait one cycle for recundancy valid signal to propagate
+    # After which valid signal and valid data should be avail on MC input regs
+    tester.print("beep boop after one cy valid sig should be avail internally\n")
+    cycle()
+    tester.circuit.DataFromClient_valid.O.expect(valid)
+
+    # Wait one cycle MC to both 1) clock data into its internal reg
+    # and 2) go to new state (MemOff)
+    cycle()
+
+
+    # tester.print("beep boop and now we should be in state Memoff\n")
+    # tester.circuit.current_state.expect(State.MemOff)
+
+
+    tester.print("beep boop received mem_addr data '%d' == 17 == 0x11\n", 
+                 tester.circuit.mem_addr_reg.O)
+    tester.circuit.redundancy_reg.O.expect(17)
+    tester.print("beep boop passed initial mem_addr data check\n")
+
+
+    valid=0
+    tester.circuit.receive_valid = m.Bits[1](valid)
+
+
+
+
+
+
+
+
+#     # Send mem-read address, after which state should proceed to ReadData
+#     # Send "6" to MC receive-queue as mem address
+#     tester.circuit.receive = m.Bits[16](6)
+# 
+#     # Mark receive-queue (dfcq) data "valid"
+#     valid=1
+#     tester.circuit.receive_valid = m.Bits[1](valid)
+# 
+#     # FIXME should check "ready" signal before sending data
+# 
+#     # Wait one cycle for recundancy valid signal to propagate
+#     # After which valid signal and valid data should be avail on MC input regs
+#     tester.print("beep boop after one cy valid sig should be avail internally\n")
+#     cycle()
+#     tester.circuit.DataFromClient_valid.O.expect(valid)
+# 
+#     # Wait one cycle MC to both 1) clock data into its internal reg
+#     # and 2) go to new state (ReadData)
+#     cycle()
+# 
+
+
+
+
+    tester.print("beep boop and now we should be in state ReadData\n")
+    tester.circuit.current_state.expect(State.ReadData)
+    tester.print("beep boop received mem addr '%d' == 6 == 0x6\n", 
+                 tester.circuit.mem_addr_reg.O)
+    tester.circuit.mem_addr_reg.O.expect(6)
+    tester.print("beep boop passed initial mem_addr data check\n")
+
+
+    valid=0
+    tester.circuit.receive_valid = m.Bits[1](valid)
+
+
+
+
+
+
+
+
+
+
+
+#     ########################################################################
+#     tester.print("beep boop -----------------------------------------------\n")
+#     tester.print("beep boop Check transition ReadAddr => ReadData\n")
+#     check_transition(Command.Read, State.ReadAddr)
+#     tester.print("beep boop successfully arrived in state ReadAddr\n")
+
+    # ########################################################################
+    # tester.print("beep boop -----------------------------------------------\n")
+    # tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
+    # check_transition(Command.Write, State.MemOn)
+    # tester.print("beep boop successfully arrived in state MemOn\n")
+
 
 
     ########################################################################
