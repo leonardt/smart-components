@@ -642,6 +642,37 @@ def test_state_machine_fault():
         # Verify arrival at desired state
         tester.circuit.current_state.expect(state)
 
+    def send_and_check_data(dval, reg_name, reg):
+        
+        # Send dval to MC receive-queue as redundancy data
+        tester.circuit.receive = m.Bits[16](dval)
+
+        # Mark receive-queue (dfc/DataFromQueue) data "valid"
+        tester.print("beep boop ...sending valid signal\n")
+        valid=1
+        tester.circuit.receive_valid = m.Bits[1](valid)
+
+        # FIXME should check "ready" signal before sending data
+
+        # Wait one cycle for data-valid signal to propagate
+        # After which valid signal and valid data should be avail on MC input regs
+        tester.print("beep boop ...after one cy valid sig should be avail internally\n")
+        cycle()
+        tester.circuit.DataFromClient_valid.O.expect(valid)
+
+        tester.print("beep boop ...one more cy to latch data and move to new state\n")
+        # Wait one cycle MC to both 1) clock data into its internal reg
+        # and 2) go to new state
+        cycle()
+
+        tester.print(f"beep boop received {reg_name} data '%d' == {dval} == 0x{dval:x}\n", reg.O)
+        reg.O.expect(dval)
+        tester.print(f"beep boop ...passed initial {reg_name} data check\n")
+
+        tester.print("beep boop ...reset valid signal\n")
+        valid=0
+        tester.circuit.receive_valid = m.Bits[1](valid)
+
 
     ########################################################################
     # Tester setup
@@ -749,83 +780,18 @@ def test_state_machine_fault():
     check_transition(Command.Read, State.ReadAddr)
     tester.print("beep boop successfully arrived in state ReadAddr\n")
 
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check receive mem addr '6'\n")
 
-    # Send redundancy data, after which state should proceed to MemOff
-    # Send "17" to MC receive-queue as redundancy data
-    tester.circuit.receive = m.Bits[16](6)
+    # Send mem_addr data, after which state should proceed to MemOff
+    send_and_check_data(6, "mem_addr", tester.circuit.mem_addr_reg)
 
-    # Mark receive-queue (dfcq) data "valid"
-    valid=1
-    tester.circuit.receive_valid = m.Bits[1](valid)
-
-    # FIXME should check "ready" signal before sending data
-
-    # Wait one cycle for recundancy valid signal to propagate
-    # After which valid signal and valid data should be avail on MC input regs
-    tester.print("beep boop after one cy valid sig should be avail internally\n")
-    cycle()
-    tester.circuit.DataFromClient_valid.O.expect(valid)
-
-    # Wait one cycle MC to both 1) clock data into its internal reg
-    # and 2) go to new state (MemOff)
-    cycle()
-
-
-    # tester.print("beep boop and now we should be in state Memoff\n")
-    # tester.circuit.current_state.expect(State.MemOff)
-
-
-    tester.print("beep boop received mem_addr data '%d' == 17 == 0x11\n", 
-                 tester.circuit.mem_addr_reg.O)
-    tester.circuit.redundancy_reg.O.expect(17)
-    tester.print("beep boop passed initial mem_addr data check\n")
-
-
-    valid=0
-    tester.circuit.receive_valid = m.Bits[1](valid)
-
-
-
-
-
-
-
-
-#     # Send mem-read address, after which state should proceed to ReadData
-#     # Send "6" to MC receive-queue as mem address
-#     tester.circuit.receive = m.Bits[16](6)
-# 
-#     # Mark receive-queue (dfcq) data "valid"
-#     valid=1
-#     tester.circuit.receive_valid = m.Bits[1](valid)
-# 
-#     # FIXME should check "ready" signal before sending data
-# 
-#     # Wait one cycle for recundancy valid signal to propagate
-#     # After which valid signal and valid data should be avail on MC input regs
-#     tester.print("beep boop after one cy valid sig should be avail internally\n")
-#     cycle()
-#     tester.circuit.DataFromClient_valid.O.expect(valid)
-# 
-#     # Wait one cycle MC to both 1) clock data into its internal reg
-#     # and 2) go to new state (ReadData)
-#     cycle()
-# 
-
-
-
-
-    tester.print("beep boop and now we should be in state ReadData\n")
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Verify arrival in state ReadData\n")
     tester.circuit.current_state.expect(State.ReadData)
-    tester.print("beep boop received mem addr '%d' == 6 == 0x6\n", 
-                 tester.circuit.mem_addr_reg.O)
-    tester.circuit.mem_addr_reg.O.expect(6)
-    tester.print("beep boop passed initial mem_addr data check\n")
-
-
-    valid=0
-    tester.circuit.receive_valid = m.Bits[1](valid)
-
+    tester.print("beep boop ...CORRECT!\n")
 
 
 
