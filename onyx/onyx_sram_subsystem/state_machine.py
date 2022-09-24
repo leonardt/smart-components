@@ -85,15 +85,14 @@ class State():
     num_states = 7; i=0
     nbits = (num_states-1).bit_length()
     #----------------------------------
-    MemInit  = m.Bits[nbits](i); i=i+1 # 0
-    MemOff   = m.Bits[nbits](i); i=i+1 # 1
-    Send     = m.Bits[nbits](i); i=i+1 # 2
-    MemOn    = m.Bits[nbits](i); i=i+1 # 3
-    ReadAddr = m.Bits[nbits](i); i=i+1 # 4
-    ReadData = m.Bits[nbits](i); i=i+1 # currently unused maybe
-    Write    = m.Bits[nbits](i); i=i+1 # currently unused maybe
-
-
+    MemInit   = m.Bits[nbits](i); i=i+1 # 0
+    MemOff    = m.Bits[nbits](i); i=i+1 # 1
+    Send      = m.Bits[nbits](i); i=i+1 # 2
+    MemOn     = m.Bits[nbits](i); i=i+1 # 3
+    ReadAddr  = m.Bits[nbits](i); i=i+1 # 4
+    ReadData  = m.Bits[nbits](i); i=i+1 # 5
+    WriteAddr = m.Bits[nbits](i); i=i+1 # 6
+    WriteData = m.Bits[nbits](i); i=i+1 # 7
 
 class Queue():
     '''A way to pass messages between ourself and others. Depending on
@@ -119,15 +118,6 @@ class Queue():
         self.O = self.Reg.O
 
         # if port != None: self.Reg.I @= port
-
-    # Convenience function; given a 'state_reg' wire and some states
-    # (constants), enable the register ONLY when in those states
-    # This probably builds terrible RTL, but with any luck the
-    # downstream tools will optimize easily...
-    def enable(self, state_reg, state, *more_states):
-        cond = (state_reg == state)
-        for s in more_states: cond = cond | (state_reg == s)
-        self.Reg.CE @= cond
 
     def is_valid(self): return (self.valid == m.Bits[1](1))
     def is_ready(self): return (self.ready == m.Bits[1](1))
@@ -236,42 +226,6 @@ class XmtQueue(Queue):
         # ready_out       @= self.ReadyReg.O
 
     # Backward compatibility for now, will delete soon
-    def get(self): return self.Reg.O
-
-
-# Deprecated simple register interface w/o ready/valid
-# to be deleted after code has been updated
-class MessageQueue():
-    '''
-    Examples:
-      OLD: o_reg = m.Register(T=m.Bits[nbits], has_enable=True)(); o_reg.name = "o_reg"
-      NEW: self.CommandFromClient = MessageQueue("o_reg", nbits=4)
-    
-      OLD: cmd = self.o_reg.O
-      NEW: cmd = self.CommandFromClient.O
-
-      OLD: self.o_reg.I             @= self.io.offer
-      NEW: self.CommandFromClient.I @= self.io.offer
-
-      OLD: self.o_reg.CE @= ((state_reg == State.MemOff) | (state_reg == State.MemOn))
-      NEW: self.CommandFromClient.enable(state_reg, State.MemOff, State.MemOn)
-
-    '''
-
-    def __init__(self, name, nbits):
-        self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
-        self.Reg.name = name
-
-        self.I = self.Reg.I
-        self.O = self.Reg.O
-
-    def enable(self, state_reg, state, *more_states):
-        cond = (state_reg == state)
-        for s in more_states: cond = cond | (state_reg == s)
-        # self.Reg.CE @= cond
-        # q.enable(cond)
-        self.Reg.CE @= cond
-
     def get(self): return self.Reg.O
 
 
@@ -391,20 +345,12 @@ class StateMachine(CoopGenerator):
         # Outputs (old style)
         # self.io.send             @= self.DataToClient.O
         
+######### TODO/FIXME move red_reg.CE down, like we did with mem_addr, then delete
         # Enable registers *only* in states where regs are used (why?)
-        state_reg = self.state_reg.O
-        self.redundancy_reg.CE @= (state_reg == State.MemInit)
-        self.mem_addr_reg.CE   @= (state_reg == State.ReadAddr)
+        # state_reg = self.state_reg.O
+        # self.redundancy_reg.CE @= (state_reg == State.MemInit)
+        # self.mem_addr_reg.CE   @= ((state_reg == State.ReadAddr) | (state_reg == State.WriteAddr))
 
-
-        # Enable queues *only* in states where queues are used (why?)
-        # FIXME isn't DFC also used in MemWrite and MemRead states? For address?
-        # Also DTC? FIXME Why is this working???
-        self.DataFromClient.enable(state_reg, 
-            State.MemInit, State.ReadAddr, State.Write
-        )
-        self.DataToClient.enable(     state_reg, State.Send, State.ReadData)
-        self.CommandFromClient.enable(state_reg, State.MemOff, State.MemOn)
 
         # ==============================================================================
         # Note inline_combinational() is not very robust i.e. very particular
@@ -441,10 +387,19 @@ class StateMachine(CoopGenerator):
             # ready_for_dfc = m.Bits[1](0)
             ##############################################################################
 
+            # Constants
+            READY  = m.Bits[1](1)
+            ENABLE = True
 
-            READY = m.Bits[1](1)
+            # Reset ready signals
             ready_for_dfc = ~READY
             ready_for_cmd = ~READY
+
+            # Reset reg-enable signals
+            redundancy_reg_enable = ~ENABLE
+            addr_to_mem_enable    = ~ENABLE
+            dtc_enable            = ~ENABLE
+            cmd_enable            = ~ENABLE
 
             cfc = self.CommandFromClient
             dfc = self.DataFromClient
@@ -453,12 +408,17 @@ class StateMachine(CoopGenerator):
             # State 'MemInit'
             if cur_state == State.MemInit:
 
+                # Enable regs
+                redundancy_reg_enable = ENABLE
+
+
                 # Get redundancy info from client/testbench
                 # If successful, go to goto_state
 
                 # Setup
                 goto_state = State.MemOff    # Go to this state when/if successful
                 ready_for_dfc = READY        # Ready for new data
+                dfc_enable = ENABLE
 
                 if dfc.is_valid():
                     redundancy_data = dfc.data
@@ -469,9 +429,11 @@ class StateMachine(CoopGenerator):
             # State MemOff
             elif cur_state == State.MemOff:
 
-                # MemOff * PowerOn => goto MemOn
-
+                # Enable command reg, ready cmd queue
+                cmd_enable = ENABLE
                 ready_for_cmd = READY
+
+                # MemOff * PowerOn => goto MemOn
                 if cfc.is_valid() & (cfc.data == Command.PowerOn):
                     data_to_client = WakeAcktT
                     ready_for_cmd = ~READY     # Got data, not yet ready for next command
@@ -486,6 +448,8 @@ class StateMachine(CoopGenerator):
             # State MemOn
             elif cur_state == State.MemOn:
 
+                # Enable command reg, ready cmd queue
+                cmd_enable = ENABLE
                 ready_for_cmd = READY
 
                 # MemOn & PowerOff => goto MemOff
@@ -523,13 +487,19 @@ class StateMachine(CoopGenerator):
 
                 elif cfc.is_valid() & (cfc.data == Command.Write):
                     ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-                    next_state = State.Write
+                    next_state = State.WriteAddr
 
 
 
 
             # State ReadAddr
             elif cur_state == State.ReadAddr:
+
+                dfc_enable = ENABLE
+
+
+                # Enable regs
+                addr_to_mem_enable = ENABLE
 
                 # Get read-address info from client/testbench
                 # If successful, go to state ReadData
@@ -541,15 +511,39 @@ class StateMachine(CoopGenerator):
                     next_state = State.ReadData
 
 
-            # bookmark working on readdata
+            # State WriteAddr is nearly identical to ReadAddr
+            elif cur_state == State.WriteAddr:
+
+                dfc_enable = ENABLE
+
+
+                # Enable regs
+                addr_to_mem_enable = ENABLE
+
+                # Get read-address info from client/testbench
+                # If successful, go to state ReadData
+
+                ready_for_dfc = READY        # Ready for new data
+                if dfc.is_valid():
+                    addr_to_mem = dfc.data                  # Receive(Addr) [from client requesting read]
+                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    next_state = State.WriteData
+
+
+            # bookmark NEXT:
+            #   clean up readdata
+            #   start on WriteAddr, WriteData
+            #   update state diagram
+
             # State ReadData
             elif cur_state == State.ReadData:
-                dtc_data_valid = m.Bits[1](1)
+                dtc_valid = m.Bits[1](1)
+                dtc_enable = ENABLE
 
                 # post valid data
                 VALID = m.Bits[1](1)
                 data_to_client = m.Bits[16](10066)
-                dtc_data_valid = VALID
+                dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
                 # if self.DataToClient.is_ready():
@@ -561,29 +555,29 @@ class StateMachine(CoopGenerator):
 
 
 
-            # State Write
+            # State Write TODO
 
 
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
-            self.redundancy_reg.I @= redundancy_data
 
-            self.mem_addr_reg.I @= addr_to_mem
+            self.mem_addr_reg.I   @= addr_to_mem
+            self.mem_addr_reg.CE  @= addr_to_mem_enable
 
+            self.redundancy_reg.I  @= redundancy_data
+            self.redundancy_reg.CE @= redundancy_reg_enable
 
             # "to" MessageQueue inputs
-            self.DataToClient.Reg.I @= data_to_client
+            self.CommandFromClient.ready  @= ready_for_cmd
+            self.CommandFromClient.Reg.CE @= cmd_enable
 
-            self.CommandFromClient.ready @= ready_for_cmd
+            self.DataFromClient.ready    @= ready_for_dfc
+            self.DataFromClient.Reg.CE   @= dfc_enable
 
-            self.DataFromClient.ready @= ready_for_dfc
-
-            self.DataToClient.valid @= dtc_data_valid
-
-
-
-
+            self.DataToClient.Reg.I      @= data_to_client
+            self.DataToClient.valid      @= dtc_valid
+            self.DataToClient.Reg.CE     @= dtc_enable
 
 def build_verilog():
     FSM = StateMachine()
@@ -811,41 +805,98 @@ def test_state_machine_fault():
     tester.print(f"beep boop Check that MC sent data '{wantdata}'\n")
     get_and_check_dtc_data(wantdata)
 
-
+    ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Verify arrival in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     tester.print("beep boop ...CORRECT!\n")
-
-
     cycle()
 
+    ########################################################################
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop Verify *still* in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     tester.print("beep boop ...CORRECT!\n")
 
+    ########################################################################
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print("beep boop Check transition MemOn => WriteAddr on command Write\n")
+    check_transition(Command.Write, State.WriteAddr)
+    tester.print("beep boop successfully arrived in state WriteAddr\n")
+
+    # BOOKMARK debugging WriteAddr
+
+    ########################################################################
+    maddr = 88
+    tester.print("beep boop -----------------------------------------------\n")
+    tester.print(f"beep boop Check that MC received mem addr '{maddr}'\n")
+
+    # Send mem_addr data, after which state should proceed to MemOff
+    # send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
+        
+    if True:
+        dval = maddr
+        reg_name = "mem_addr"
+        reg = tester.circuit.mem_addr_reg
+
+        # Send dval to MC receive-queue as "DataFromClient" data
+        tester.print("beep boop ...sending data to controller\n")
+        tester.circuit.receive = m.Bits[16](dval)
+
+        # Mark receive-queue (dfc/DataFromQueue) data "valid"
+        tester.print("beep boop ...sending valid signal\n")
+        VALID = 1
+        tester.circuit.receive_valid = VALID
+
+        # FIXME should check "ready" signal before sending data
+
+        # Wait one cycle for valid signal to propagate
+        # After which valid signal and valid data should be avail on MC input regs
+        tester.print("beep boop ...after one cy valid sig should be avail internally\n")
+        cycle()
+        tester.circuit.DataFromClient_valid.O.expect(VALID)
+
+        tester.print("beep boop 1\n")
+        tester.circuit.DataFromClient.O.expect(dval)
+
+        tester.print("beep boop 2\n")
+        reg.I.expect(dval)
+
+        
+        tester.print("beep boop 1 still in WriteAddr?\n")
+        tester.circuit.current_state.expect(State.WriteAddr)
+
+        # Sanity check of reg-enable signal
+        tester.print("beep boop ...CE better be active (CE=1)\n")
+        tester.circuit.DataFromClient.CE.expect(1)
+
+        tester.print("beep boop ...CE better be active for internal reg (CE=1)\n")
+        reg.CE.expect(1)
+
+
+        # Reset valid signal
+        tester.print("beep boop ...reset valid signal\n")
+        tester.circuit.receive_valid = ~VALID
+
+
+        # Wait one cycle MC to clock data in, and goto new state
+        tester.print("beep boop ...one more cy to latch data and move to new state\n")
+        cycle()
+
+        # Check latched data for correctness
+        msg = f"MC received {reg_name} data '%d' ==? {dval} (0x{dval:x})"
+        tester.print(f"beep boop {msg}\n", reg.O)
+        reg.O.expect(dval)
+        tester.print(f"beep boop ...yes! passed initial {reg_name} data check\n")
 
 
 
 
-# bookmark
-##############################################################################
-##############################################################################
-##############################################################################
 
 
-#     ########################################################################
-#     tester.print("beep boop -----------------------------------------------\n")
-#     tester.print("beep boop Check transition ReadAddr => ReadData\n")
-#     check_transition(Command.Read, State.ReadAddr)
-#     tester.print("beep boop successfully arrived in state ReadAddr\n")
 
-    # ########################################################################
-    # tester.print("beep boop -----------------------------------------------\n")
-    # tester.print("beep boop Check transition MemOn => MemOn on command Write\n")
-    # check_transition(Command.Write, State.MemOn)
-    # tester.print("beep boop successfully arrived in state MemOn\n")
+
+
 
 
 
@@ -886,4 +937,65 @@ def test_state_machine_fault():
 beep/g'    """)
 
 test_state_machine_fault()
+
+
+
+
+
+
+# # Deprecated simple register interface w/o ready/valid
+# # to be deleted after code has been updated
+# class MessageQueue():
+#     '''
+#     Examples:
+#       OLD: o_reg = m.Register(T=m.Bits[nbits], has_enable=True)(); o_reg.name = "o_reg"
+#       NEW: self.CommandFromClient = MessageQueue("o_reg", nbits=4)
+#     
+#       OLD: cmd = self.o_reg.O
+#       NEW: cmd = self.CommandFromClient.O
+# 
+#       OLD: self.o_reg.I             @= self.io.offer
+#       NEW: self.CommandFromClient.I @= self.io.offer
+# 
+#       OLD: self.o_reg.CE @= ((state_reg == State.MemOff) | (state_reg == State.MemOn))
+#       NEW: self.CommandFromClient.enable(state_reg, State.MemOff, State.MemOn)
+# 
+#     '''
+# 
+#     def __init__(self, name, nbits):
+#         self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
+#         self.Reg.name = name
+# 
+#         self.I = self.Reg.I
+#         self.O = self.Reg.O
+# 
+#     def enable(self, state_reg, state, *more_states):
+#         cond = (state_reg == state)
+#         for s in more_states: cond = cond | (state_reg == s)
+#         # self.Reg.CE @= cond
+#         # q.enable(cond)
+#         self.Reg.CE @= cond
+# 
+#     def get(self): return self.Reg.O
+
+#     # Convenience function; given a 'state_reg' wire and some states
+#     # (constants), enable the register ONLY when in those states
+#     # This probably builds terrible RTL, but with any luck the
+#     # downstream tools will optimize easily...
+#     def enable(self, state_reg, state, *more_states):
+#         cond = (state_reg == state)
+#         for s in more_states: cond = cond | (state_reg == s)
+#         self.Reg.CE @= cond
+
+        # Enable queues *only* in states where queues are used (why?)
+        # FIXME isn't DFC also used in MemWrite and MemRead states? For address?
+        # Also DTC? FIXME Why is this working???
+#         self.DataFromClient.enable(state_reg, 
+#             State.MemInit, State.ReadAddr, State.WriteAddr, State.WriteData
+#         )
+# 
+        # self.DataToClient.enable(     state_reg, State.Send, State.ReadData) # good
+        # self.DataToClient.enable(     state_reg, State.Send) # bad
+
+#         self.CommandFromClient.enable(state_reg, State.MemOff, State.MemOn)
 
