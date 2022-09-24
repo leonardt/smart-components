@@ -580,7 +580,7 @@ def test_state_machine_fault():
     
     debug("Build and test state machine")
 
-    def prlog(msg, *args):
+    def prlog0(msg, *args):
         '''print to log'''
         tester.print("beep boop " + msg, *args)
 
@@ -765,7 +765,7 @@ def test_state_machine_fault():
 
     ########################################################################
     maddr = 66
-    prlog("-----------------------------------------------\n")
+    prlog0("-----------------------------------------------\n")
     tester.print(f"beep boop Check that MC received mem addr '{maddr}'\n")
 
     # Send mem_addr data, after which state should proceed to MemOff
@@ -782,8 +782,8 @@ def test_state_machine_fault():
     prlog9("-----------------------------------------------\n")
     tester.print(f"beep boop Check that MC sent data '{wantdata}'\n")
     get_and_check_dtc_data(wantdata)
-
     cycle()
+
     ########################################################################
     prlog9("-----------------------------------------------\n")
     tester.print("beep boop Verify arrival in state MemOn\n")
@@ -807,9 +807,16 @@ def test_state_machine_fault():
 
     ########################################################################
     maddr = 88
-    prlog(f"-----------------------------------------------\n")
-    prlog(f"Check that MC received mem addr '{maddr}'\n")
+    prlog9(f"-----------------------------------------------\n")
+    prlog0(f"Check that MC received mem addr '{maddr}'\n")
     send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
+
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    tester.print("beep boop Verify arrival in state WriteData\n")
+    tester.circuit.current_state.expect(State.WriteData)
+    prlog9("...CORRECT!\n")
+
 
     # BOOKMARK this is next
     # BOOKMARK this is next
@@ -826,15 +833,8 @@ def test_state_machine_fault():
     tester.print("beep boop -----------------------------------------------\n")
     tester.print("beep boop PASSED ALL TESTS\n")
 
-
-
-
-
-
-
-
-
-
+    ########################################################################
+    ########################################################################
     ########################################################################
     # Note the newlines do not print to the log file so you have to do
     # something like
