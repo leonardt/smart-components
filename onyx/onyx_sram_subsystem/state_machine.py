@@ -696,41 +696,41 @@ def test_state_machine_fault():
     # Tester setup
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
-    tester.print("beep boop testing state_machine circuit\n")
+    prlog0("testing state_machine circuit\n")
 
-    tester.print("beep boop tester data not valid yet so setting dfc valid=0\n");
+    prlog0("tester data not valid yet so setting dfc valid=0\n");
     tester.circuit.receive_valid  = m.Bits[1](0)
 
-    tester.print("beep boop offer not valid yet so setting offer_valid=0\n");
+    prlog0("offer not valid yet so setting offer_valid=0\n");
     tester.circuit.offer_valid = m.Bits[1](0)
 
     ########################################################################
     # Expect to start in state MemInit
     tester.circuit.current_state.expect(State.MemInit)
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop 0 successfully booted in state MemInit maybe\n")
-    tester.print("beep boop sending redundancy data to MC\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("0 successfully booted in state MemInit maybe\n")
+    prlog0("sending redundancy data to MC\n")
 
     ########################################################################
     rdata = 17
-    tester.print("beep boop -----------------------------------------------\n")
+    prlog0("-----------------------------------------------\n")
     tester.print(f"beep boop Check that MC received redundancy data '{rdata}'\n")
     send_and_check_dfc_data(17, "redundancy", tester.circuit.redundancy_reg)
 
     ########################################################################
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop and now we should be in state Memoff\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("and now we should be in state Memoff\n")
     tester.circuit.current_state.expect(State.MemOff)
 
     ########################################################################
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOff => MemOff on command PowerOff\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("Check transition MemOff => MemOff on command PowerOff\n")
     check_transition(Command.PowerOff, State.MemOff)
     prlog9("successfully arrived in state MemOff\n")
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOff => MemOn on command PowerOn\n")
+    prlog0("Check transition MemOff => MemOn on command PowerOn\n")
 
     # FIXME why do we need two cycles (4 edges) for this transition?
     # I guess...one cycle for command to propagate from o_reg.I to o_reg.O
@@ -740,26 +740,26 @@ def test_state_machine_fault():
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOn => MemOn on command Idle\n")
+    prlog0("Check transition MemOn => MemOn on command Idle\n")
     check_transition(Command.Idle, State.MemOn)
     prlog9("successfully arrived in state MemOn\n")
 
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOn => MemOff on command PowerOff\n")
+    prlog0("Check transition MemOn => MemOff on command PowerOff\n")
     check_transition(Command.PowerOff, State.MemOff)
     prlog9("successfully arrived in state MemOff\n")
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOff => MemOn on command PowerOn\n")
+    prlog0("Check transition MemOff => MemOn on command PowerOn\n")
     check_transition(Command.PowerOn, State.MemOn)
     prlog9("successfully arrived in state MemOn\n")
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOn => ReadAddr on command Read\n")
+    prlog0("Check transition MemOn => ReadAddr on command Read\n")
     check_transition(Command.Read, State.ReadAddr)
     prlog9("successfully arrived in state ReadAddr\n")
 
@@ -773,7 +773,7 @@ def test_state_machine_fault():
         
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Verify arrival in state ReadData\n")
+    prlog0("Verify arrival in state ReadData\n")
     tester.circuit.current_state.expect(State.ReadData)
     prlog9("...CORRECT!\n")
 
@@ -786,20 +786,20 @@ def test_state_machine_fault():
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Verify arrival in state MemOn\n")
+    prlog0("Verify arrival in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
     cycle()
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Verify *still* in state MemOn\n")
+    prlog0("Verify *still* in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
 
     ########################################################################
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop Check transition MemOn => WriteAddr on command Write\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("Check transition MemOn => WriteAddr on command Write\n")
     check_transition(Command.Write, State.WriteAddr)
     prlog9("successfully arrived in state WriteAddr\n")
 
@@ -813,7 +813,7 @@ def test_state_machine_fault():
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    tester.print("beep boop Verify arrival in state WriteData\n")
+    prlog0("Verify arrival in state WriteData\n")
     tester.circuit.current_state.expect(State.WriteData)
     prlog9("...CORRECT!\n")
 
@@ -830,8 +830,8 @@ def test_state_machine_fault():
 
 
 
-    tester.print("beep boop -----------------------------------------------\n")
-    tester.print("beep boop PASSED ALL TESTS\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("PASSED ALL TESTS\n")
 
     ########################################################################
     ########################################################################
