@@ -288,6 +288,12 @@ class StateMachine(CoopGenerator):
         )()
         self.mem_addr_reg.name = "mem_addr_reg"
 
+        # mem_data reg holds data from client for writing to SRAM
+        self.mem_data_reg = m.Register(
+            T=m.Bits[16],
+            has_enable=True,
+        )()
+        self.mem_data_reg.name = "mem_data_reg"
 
 
 
@@ -507,10 +513,8 @@ class StateMachine(CoopGenerator):
             # State WriteAddr is nearly identical to ReadAddr
             elif cur_state == State.WriteAddr:
 
+                # Setup
                 dfc_enable = ENABLE
-
-
-                # Enable regs
                 addr_to_mem_enable = ENABLE
 
                 # Get read-address info from client/testbench
@@ -523,10 +527,23 @@ class StateMachine(CoopGenerator):
                     next_state = State.WriteData
 
 
-            # bookmark NEXT:
-            #   clean up readdata
-            #   start on WriteAddr, WriteData
-            #   update state diagram
+            # State WriteData is similar to ReadAddr/WriteAddr
+            elif cur_state == State.WriteData:
+
+                # Setup
+                dfc_enable = ENABLE
+                data_to_mem_enable = ENABLE
+
+                # Get data from client, write it to SRAM
+                # If successful, go to state MemOn
+
+                ready_for_dfc = READY        # Ready for new data
+                if dfc.is_valid():
+                    data_to_mem = dfc.data   # Receive(Data)
+                    # SRAM(addr_to_mem) = data_to_mem # Write data (from client) to SRAM
+                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    next_state = State.MemOn
+
 
             # State ReadData
             elif cur_state == State.ReadData:
@@ -546,15 +563,14 @@ class StateMachine(CoopGenerator):
 
 
 
-            # State Write TODO
-
-
-
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
 
             self.mem_addr_reg.I   @= addr_to_mem
             self.mem_addr_reg.CE  @= addr_to_mem_enable
+
+            self.mem_data_reg.I   @= data_to_mem
+            self.mem_data_reg.CE  @= data_to_mem_enable
 
             self.redundancy_reg.I  @= redundancy_data
             self.redundancy_reg.CE @= redundancy_reg_enable
@@ -858,26 +874,23 @@ def test_state_machine_fault():
     tester.circuit.current_state.expect(State.WriteData)
     prlog9("...CORRECT!\n")
 
+    ########################################################################
+    data = 10088
+    prlog9(f"-----------------------------------------------\n")
+    prlog0(f"Send data '{data}' to MC and verify receipt\n")
+    send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
 
-    # BOOKMARK this is next
-    # BOOKMARK this is next
-    # BOOKMARK this is next
-    # BOOKMARK this is next
-    # BOOKMARK this is next
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    prlog0("Verify arrival in state MemOn\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    prlog9("...CORRECT!\n")
 
-#     #------------------------------------------------------------------------
-#     prlog0("GOOOOOD to here\n")
-#     tester.circuit.current_state.expect(13)
-#     #------------------------------------------------------------------------
-
-
-
-
-
-    # Send mem_addr data, after which state should proceed to MemOff
-
-
-
+    #------------------------------------------------------------------------
+    # BOOKMARK
+    # prlog0("GOOOOOD to here\n")
+    # tester.circuit.current_state.expect(13)
+    #------------------------------------------------------------------------
 
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
