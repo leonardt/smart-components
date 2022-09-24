@@ -51,6 +51,9 @@ for i in range(2048): SRAM.append(i+10000)
 assert SRAM[2047] == 12047
 
 #------------------------------------------------------------------------
+# Dummy value for now
+WakeAckT       = m.Bits[16](1)
+
 class CoopGenerator(m.Generator2):
     def __init__(self, **kwargs):
         self._decl_attrs(**kwargs)
@@ -87,7 +90,7 @@ class State():
     #----------------------------------
     MemInit   = m.Bits[nbits](i); i=i+1 # 0
     MemOff    = m.Bits[nbits](i); i=i+1 # 1
-    Send      = m.Bits[nbits](i); i=i+1 # 2
+    SendAck   = m.Bits[nbits](i); i=i+1 # 2 UNUSED???
     MemOn     = m.Bits[nbits](i); i=i+1 # 3
     ReadAddr  = m.Bits[nbits](i); i=i+1 # 4
     ReadData  = m.Bits[nbits](i); i=i+1 # 5
@@ -350,9 +353,6 @@ class StateMachine(CoopGenerator):
             # Convenient shortcuts
             cur_state = self.state_reg.O
 
-            # Dummy value for now
-            WakeAcktT       = m.Bits[16](1)
-
             # Default is to stay in the same state as before
             next_state = cur_state
                 
@@ -413,14 +413,29 @@ class StateMachine(CoopGenerator):
 
                 # MemOff * PowerOn => goto MemOn
                 if cfc.is_valid() & (cfc.data == Command.PowerOn):
-                    data_to_client = WakeAcktT
                     ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                    next_state = State.MemOn
+                    next_state = State.SendAck
 
                 # State diagram says MemOff => MemOff on command PowerOff
                 # But. Why? By default we will stay in MemOff anyway...?
                 # elif (c == Command.PowerOff): next_state = State.MemOff
                 # FIXME will client freak out if no ack from PowerOff command? grumble grumble
+
+            # State SendAck
+            elif cur_state == State.SendAck:
+
+                # Setup
+                dtc_enable = ENABLE
+                data_to_client = WakeAckT
+                dtc_valid = VALID
+
+                # dtc READY means they got the data and we can all move on
+                if dtc.is_ready():
+                    next_state = State.MemOn
+
+                    # Reset
+                    dtc_valid  = ~VALID
+                    dtc_enable = ~ENABLE
 
 
             # State MemOn
@@ -515,9 +530,9 @@ class StateMachine(CoopGenerator):
 
             # State ReadData
             elif cur_state == State.ReadData:
-                dtc_enable = ENABLE
 
-                # post valid data
+                # Setup
+                dtc_enable = ENABLE
                 data_to_client = m.Bits[16](10066)
                 dtc_valid = VALID
 
@@ -525,6 +540,7 @@ class StateMachine(CoopGenerator):
                 if dtc.is_ready():
                     next_state = State.MemOn
 
+                    # Reset
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
 
@@ -696,30 +712,30 @@ def test_state_machine_fault():
     # Tester setup
     Definition = StateMachine()
     tester = fault.Tester(Definition, Definition.CLK)
-    prlog0("testing state_machine circuit\n")
+    prlog0("TESTING STATE_MACHINE CIRCUIT\n")
 
-    prlog0("tester data not valid yet so setting dfc valid=0\n");
+    prlog0("(tester data not valid yet so setting dfc valid=0)\n");
     tester.circuit.receive_valid  = m.Bits[1](0)
 
-    prlog0("offer not valid yet so setting offer_valid=0\n");
+    prlog0("(offer not valid yet so setting offer_valid=0)\n");
     tester.circuit.offer_valid = m.Bits[1](0)
 
     ########################################################################
     # Expect to start in state MemInit
     tester.circuit.current_state.expect(State.MemInit)
     prlog0("-----------------------------------------------\n")
-    prlog0("0 successfully booted in state MemInit maybe\n")
-    prlog0("sending redundancy data to MC\n")
+    prlog0("Successfully booted in state MemInit maybe\n")
+    prlog0("  - sending redundancy data to MC\n")
 
     ########################################################################
     rdata = 17
-    prlog0("-----------------------------------------------\n")
-    tester.print(f"beep boop Check that MC received redundancy data '{rdata}'\n")
+    prlog9("-----------------------------------------------\n")
+    prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
     send_and_check_dfc_data(17, "redundancy", tester.circuit.redundancy_reg)
 
     ########################################################################
-    prlog0("-----------------------------------------------\n")
-    prlog0("and now we should be in state Memoff\n")
+    prlog9("-----------------------------------------------\n")
+    prlog0("  - and now we should be in state Memoff\n")
     tester.circuit.current_state.expect(State.MemOff)
 
     ########################################################################
@@ -728,22 +744,33 @@ def test_state_machine_fault():
     check_transition(Command.PowerOff, State.MemOff)
     prlog9("successfully arrived in state MemOff\n")
 
+
+    # memoff => sendack => memon has to happen all together
+    ########################################################################
+    prlog0("-----------------------------------------------\n")
+    prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 752\n")
+    check_transition(Command.PowerOn, State.SendAck)
+    prlog9("successfully arrived in state SendAck\n")
+    ########################################################################
+    wantdata = int(WakeAckT)
+    prlog9("-----------------------------------------------\n")
+    prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
+    get_and_check_dtc_data(wantdata)
+    cycle()
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    prlog0("Check transition MemOff => MemOn on command PowerOn\n")
+    prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    prlog9("  CORRECT!\n")
+    ########################################################################
 
-    # FIXME why do we need two cycles (4 edges) for this transition?
-    # I guess...one cycle for command to propagate from o_reg.I to o_reg.O
-    # Plus one cycle for state to move from MemOff to MemOn...?
-    check_transition(Command.PowerOn, State.MemOn)
-    prlog9("successfully arrived in state MemOn\n")
+
 
     ########################################################################
-    prlog9("-----------------------------------------------\n")
+    prlog0("-----------------------------------------------\n")
     prlog0("Check transition MemOn => MemOn on command Idle\n")
     check_transition(Command.Idle, State.MemOn)
     prlog9("successfully arrived in state MemOn\n")
-
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
@@ -751,11 +778,27 @@ def test_state_machine_fault():
     check_transition(Command.PowerOff, State.MemOff)
     prlog9("successfully arrived in state MemOff\n")
 
+
+    # memoff => sendack => memon has to happen all together
+    # FIXME consider making this a method/function/subroutine or whatever tf
+    ########################################################################
+    prlog0("-----------------------------------------------\n")
+    prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 787\n")
+    check_transition(Command.PowerOn, State.SendAck)
+    prlog9("successfully arrived in state SendAck\n")
+    ########################################################################
+    wantdata = int(WakeAckT)
+    prlog9("-----------------------------------------------\n")
+    prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
+    get_and_check_dtc_data(wantdata)
+    cycle()
     ########################################################################
     prlog9("-----------------------------------------------\n")
-    prlog0("Check transition MemOff => MemOn on command PowerOn\n")
-    check_transition(Command.PowerOn, State.MemOn)
-    prlog9("successfully arrived in state MemOn\n")
+    prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    prlog9(f"  - CORRECT!\n")
+    ########################################################################
+
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
@@ -766,7 +809,7 @@ def test_state_machine_fault():
     ########################################################################
     maddr = 66
     prlog0("-----------------------------------------------\n")
-    tester.print(f"beep boop Check that MC received mem addr '{maddr}'\n")
+    prlog0(f"Check that MC received mem addr '{maddr}'\n")
 
     # Send mem_addr data, after which state should proceed to MemOff
     send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
@@ -780,7 +823,7 @@ def test_state_machine_fault():
     ########################################################################
     wantdata = 10066
     prlog9("-----------------------------------------------\n")
-    tester.print(f"beep boop Check that MC sent data '{wantdata}'\n")
+    prlog0(f"Check that MC sent data '{wantdata}'\n")
     get_and_check_dtc_data(wantdata)
     cycle()
 
@@ -803,8 +846,6 @@ def test_state_machine_fault():
     check_transition(Command.Write, State.WriteAddr)
     prlog9("successfully arrived in state WriteAddr\n")
 
-    # BOOKMARK debugging WriteAddr
-
     ########################################################################
     maddr = 88
     prlog9(f"-----------------------------------------------\n")
@@ -823,6 +864,14 @@ def test_state_machine_fault():
     # BOOKMARK this is next
     # BOOKMARK this is next
     # BOOKMARK this is next
+
+#     #------------------------------------------------------------------------
+#     prlog0("GOOOOOD to here\n")
+#     tester.circuit.current_state.expect(13)
+#     #------------------------------------------------------------------------
+
+
+
 
 
     # Send mem_addr data, after which state should proceed to MemOff
