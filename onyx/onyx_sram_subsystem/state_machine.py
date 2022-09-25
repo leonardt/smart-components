@@ -45,12 +45,6 @@ from util import inverse_look_up, BiMap
 debug("* Done importing python packages...")
 
 #------------------------------------------------------------------------
-# 2K SRAM where e.g. SRAM[13] = 10013; SRAM[2047] = 12047;
-SRAM=[]
-for i in range(2048): SRAM.append(i+10000)
-assert SRAM[2047] == 12047
-
-#------------------------------------------------------------------------
 # Dummy value for now
 WakeAckT       = m.Bits[16](1)
 
@@ -102,8 +96,6 @@ class Queue():
     which way you want to go, you'll use one of the subclasses
     'RcvQueue' or 'XmtQueue', see below for details.
     '''
-
-    # def __init__(self, name, nbits, port=None):
     def __init__(self, name, nbits, readyvalid=True):
         self.Reg = m.Register(T=m.Bits[nbits], has_enable=True)()
         self.Reg.name = name    ; # E.g. "DataFromClient"
@@ -120,15 +112,8 @@ class Queue():
         self.I = self.Reg.I
         self.O = self.Reg.O
 
-        # if port != None: self.Reg.I @= port
-
     def is_valid(self): return (self.valid == m.Bits[1](1))
     def is_ready(self): return (self.ready == m.Bits[1](1))
-
-    # Backward compatibility (TEMPORARY)
-    # Until everyone is on board with R/V, use this for backward compatibility
-    def get(self): return self.Reg.O
-
 
 class RcvQueue(Queue):
     '''
@@ -159,7 +144,9 @@ class RcvQueue(Queue):
 
     '''
     # set ReadyValid TRUE to use readyvalid protocol, otherwise it's just a register
-    def __init__(self, name, nbits, readyvalid=False, data_in=None, valid_in=None, ready_out=None):
+    def __init__(self, name, nbits, readyvalid=False, 
+                 data_in=None, valid_in=None, ready_out=None
+    ):
         Queue.__init__(self, name, nbits, readyvalid)
 
         # "We" control ready signal
@@ -208,7 +195,9 @@ class XmtQueue(Queue):
 
     '''
     # set ReadyValid TRUE to use readyvalid protocol, otherwise it's just a register
-    def __init__(self, name, nbits, readyvalid=False, data_out=None, valid_out=None, ready_in=None):
+    def __init__(self, name, nbits, readyvalid=False, 
+                 data_out=None, valid_out=None, ready_in=None
+    ):
         Queue.__init__(self, name, nbits, readyvalid)
 
         # "They" control ready signal
@@ -271,6 +260,13 @@ class StateMachine(CoopGenerator):
         )()
         self.state_reg.name = "state_reg"
 
+        # Init reg because I don't understand @inline_combinational :(
+        self.initreg = m.Register(
+            init=m.Bits[1](1),
+            has_enable=False,
+        )()
+        self.initreg.name = "initreg"
+
         # redundancy reg holds redundancy data from ?client? for future ref
         # self.redundancy_reg = reg("redundancy_reg", nbits=16); # "redundancy" reg
         self.redundancy_reg = m.Register(
@@ -278,7 +274,6 @@ class StateMachine(CoopGenerator):
             has_enable=True,
         )()
         self.redundancy_reg.name = "redundancy_reg"
-
 
         # mem_addr reg holds mem_addr data from ?client? for future ref
         # self.mem_addr_reg = reg("mem_addr_reg", nbits=16); # "mem_addr" reg
@@ -295,7 +290,9 @@ class StateMachine(CoopGenerator):
         )()
         self.mem_data_reg.name = "mem_data_reg"
 
-
+        # 2K SRAM memory, just like garnet :)
+        self.SRAM = m.Memory(2048, m.Bits[16])()
+        self.SRAM.name = "SRAM"
 
         # Instead of registers to transfer info, now have message queues.
         # Coming soon: ready-valid protocol
@@ -348,20 +345,35 @@ class StateMachine(CoopGenerator):
         # about indentation even on comments, also should avoid e.g. one-line
         # if-then ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
+
         @m.inline_combinational()
         def controller():
 
-            addr_to_mem     = m.Bits[16](13) # changes on read, write request
-            data_from_mem   = m.Bits[16](13) # magically changes when addr_to_mem changes
-            data_to_client  = m.Bits[16](13)
-            redundancy_data = m.Bits[16](13) # changes when we enter meminit state
+            cur_addr = self.mem_addr_reg.O
+
+            # Init reg allows one-time reg initialization etc.
+            init = self.initreg.O
+            if init == m.Bits[1](1):
+                addr_to_mem     = 13  # changes on read, write request
+                data_from_mem   = 14  # magically changes when addr_to_mem changes
+                data_to_client  = 15
+                redundancy_data = 16  # changes when we enter meminit state
+                
+                # Seed SRAM with correct value for fault test; need SRAM[66] = 10066
+                SRAM_raddr = 13
+                SRAM_waddr = 66
+                SRAM_wdata = 10066
+
+                init_next = 0
+
+            else:
+                addr_to_mem = cur_addr
+
+            self.initreg.I @= init_next
 
             # Convenient shortcuts
             cur_state = self.state_reg.O
 
-            # Default is to stay in the same state as before
-            next_state = cur_state
-                
             # FIXME make sure all ready/valids initialize to ZERO (init= in Queue)
 
             ##############################################################################
@@ -375,9 +387,10 @@ class StateMachine(CoopGenerator):
             VALID = m.Bits[1](1)
             ENABLE = True          # ??
 
-            # Reset ready signals
+            # Reset ready signals in FROM queues, valid signals in TO queues
             ready_for_dfc = ~READY
             ready_for_cmd = ~READY
+            dtc_valid     = ~VALID
 
             # Reset reg-enable signals
             redundancy_reg_enable = ~ENABLE
@@ -389,6 +402,9 @@ class StateMachine(CoopGenerator):
             dfc = self.DataFromClient
             dtc = self.DataToClient
 
+            # Default is to stay in the same state as before
+            next_state = cur_state
+                
             # State 'MemInit'
             if cur_state == State.MemInit:
 
@@ -489,15 +505,11 @@ class StateMachine(CoopGenerator):
                     next_state = State.WriteAddr
 
 
-
-
             # State ReadAddr
             elif cur_state == State.ReadAddr:
 
-                dfc_enable = ENABLE
-
-
                 # Enable regs
+                dfc_enable         = ENABLE
                 addr_to_mem_enable = ENABLE
 
                 # Get read-address info from client/testbench
@@ -505,16 +517,16 @@ class StateMachine(CoopGenerator):
 
                 ready_for_dfc = READY        # Ready for new data
                 if dfc.is_valid():
-                    addr_to_mem = dfc.data                  # Receive(Addr) [from client requesting read]
+                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = State.ReadData
 
 
-            # State WriteAddr is nearly identical to ReadAddr
+            # State WriteAddr is nearly identical to ReadAddr (exc. next_state)
             elif cur_state == State.WriteAddr:
 
                 # Setup
-                dfc_enable = ENABLE
+                dfc_enable         = ENABLE
                 addr_to_mem_enable = ENABLE
 
                 # Get read-address info from client/testbench
@@ -522,7 +534,7 @@ class StateMachine(CoopGenerator):
 
                 ready_for_dfc = READY        # Ready for new data
                 if dfc.is_valid():
-                    addr_to_mem = dfc.data                  # Receive(Addr) [from client requesting read]
+                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = State.WriteData
 
@@ -530,18 +542,25 @@ class StateMachine(CoopGenerator):
             # State WriteData is similar to ReadAddr/WriteAddr
             elif cur_state == State.WriteData:
 
+                # Get data from client, write it to SRAM
+                # If successful, go to state MemOn
+
                 # Setup
                 dfc_enable = ENABLE
                 data_to_mem_enable = ENABLE
 
-                # Get data from client, write it to SRAM
-                # If successful, go to state MemOn
-
                 ready_for_dfc = READY        # Ready for new data
                 if dfc.is_valid():
-                    data_to_mem = dfc.data   # Receive(Data)
-                    # SRAM(addr_to_mem) = data_to_mem # Write data (from client) to SRAM
-                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    # FIXME hm so it looks like data_to_mem is never used,
+                    # except if we delete it we have to eliminate the fault
+                    # test that checks to see that it got set !? :(
+                    data_to_mem = dfc.data   # Get data-to-write-to-SRAM from client
+
+                    # FIXME should probably turn WE on and off to prevent data shmearing
+
+                    SRAM_waddr = addr_to_mem[0:11]   # Address from prev step
+                    SRAM_wdata = dfc.data            # Data from client
+                    ready_for_dfc = ~READY           # Not yet ready for next data
                     next_state = State.MemOn
 
 
@@ -550,7 +569,9 @@ class StateMachine(CoopGenerator):
 
                 # Setup
                 dtc_enable = ENABLE
-                data_to_client = m.Bits[16](10066)
+
+                # data_to_client = 10066
+                data_to_client = self.SRAM.RDATA
                 dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
@@ -561,7 +582,10 @@ class StateMachine(CoopGenerator):
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
 
-
+            self.SRAM.RADDR @= SRAM_raddr
+            self.SRAM.WADDR @= SRAM_waddr
+            self.SRAM.WDATA @= SRAM_wdata
+            self.SRAM.WE @= 1
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
@@ -656,6 +680,8 @@ def test_state_machine_fault():
         prlog9("...sending data to controller xxx\n")
         tester.circuit.receive = m.Bits[16](dval)
 
+        # prlog0("initreg is now %d (1)\n", tester.circuit.initreg.O)
+
         # Mark receive-queue (dfc/DataFromQueue) data "valid"
         prlog9("...sending valid signal\n")
         VALID = 1
@@ -668,6 +694,8 @@ def test_state_machine_fault():
         prlog9("...after one cy valid sig should be avail internally\n")
         cycle()
         tester.circuit.DataFromClient_valid.O.expect(VALID)
+
+        prlog9("  BEFORE: mem_addr_reg is %d\n", tester.circuit.mem_addr_reg.O)
 
         # Sanity check of reg-enable signal
         prlog9("...CE better be active for dfc (CE=1)\n")
@@ -684,6 +712,8 @@ def test_state_machine_fault():
         prlog9("...one more cy to latch data and move to new state\n")
         cycle()
 
+        prlog9("  AFTER: mem_addr_reg is %d (762)\n", tester.circuit.mem_addr_reg.O)
+
         # Check latched data for correctness
         msg = f"MC received {reg_name} data '%d' ==? {dval} (0x{dval:x})"
         prlog9(f"{msg}\n", reg.O)
@@ -694,10 +724,10 @@ def test_state_machine_fault():
     def get_and_check_dtc_data(dval):
         READY=1; VALID=1
 
-#         # We expect that sender has valid data
-#         tester.print("beep boop ...expect send_valid TRUE...\n")
-#         tester.circuit.send_valid.expect(VALID)
-# 
+        # We expect that sender has valid data
+        # tester.print("beep boop ...expect send_valid TRUE...\n")
+        # tester.circuit.send_valid.expect(VALID)
+ 
         # Tell MC that we are ready to read the data
         prlog9("...sending ready signal\n")
         tester.circuit.send_ready = READY
@@ -817,14 +847,22 @@ def test_state_machine_fault():
 
 
     ########################################################################
-    prlog9("-----------------------------------------------\n")
+    prlog0("-----------------------------------------------\n")
+    maddr = 66
+    prlog0(f"check SRAM[{maddr}] == 10066 ?\n")
+    tester.circuit.SRAM.RADDR = maddr
+    cycle()
+    tester.circuit.SRAM.RDATA.expect(10066)
+
+    ########################################################################
+    prlog0("-----------------------------------------------\n")
     prlog0("Check transition MemOn => ReadAddr on command Read\n")
     check_transition(Command.Read, State.ReadAddr)
     prlog9("successfully arrived in state ReadAddr\n")
 
     ########################################################################
     maddr = 66
-    prlog0("-----------------------------------------------\n")
+    prlog9("-----------------------------------------------\n")
     prlog0(f"Check that MC received mem addr '{maddr}'\n")
 
     # Send mem_addr data, after which state should proceed to MemOff
@@ -863,7 +901,7 @@ def test_state_machine_fault():
     prlog9("successfully arrived in state WriteAddr\n")
 
     ########################################################################
-    maddr = 88
+    maddr = 88     # Set this to e.g. 87 to make it break below...
     prlog9(f"-----------------------------------------------\n")
     prlog0(f"Check that MC received mem addr '{maddr}'\n")
     send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
@@ -886,6 +924,12 @@ def test_state_machine_fault():
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
 
+    prlog0("-----------------------------------------------\n")
+    prlog0("Final check SRAM[88] == 10088 ?\n")
+    tester.circuit.SRAM.RADDR = 88
+    cycle()
+    tester.circuit.SRAM.RDATA.expect(10088)
+
     #------------------------------------------------------------------------
     # BOOKMARK
     # prlog0("GOOOOOD to here\n")
@@ -895,8 +939,7 @@ def test_state_machine_fault():
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
 
-    ########################################################################
-    ########################################################################
+
     ########################################################################
     # Note the newlines do not print to the log file so you have to do
     # something like
