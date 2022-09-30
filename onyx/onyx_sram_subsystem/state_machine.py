@@ -105,7 +105,6 @@ class Queue():
             self.ReadyReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
             self.ReadyReg.name = name+"_ready" ; # E.g. "DataFromClient_ready"
             
-            
             self.ValidReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
             self.ValidReg.name = name+"_valid" ; # E.g. "DataFromClient_valid"
 
@@ -362,23 +361,16 @@ class StateMachine(CoopGenerator):
             # Convenient shortcuts
             cur_state = self.state_reg.O
 
-            # FIXME make sure all ready/valids initialize to ZERO (init= in Queue)
-
-            ##############################################################################
-            # NOT HERE
-            # # Reset all ready-valid signals that we control.
-            # # self.DataFromClient.ready = m.Bits[1](0); # Not ready for input from client
-            # # self.DataFromClient.ReadyReg.I = m.Bits[1](0); # Not ready for input from client
-
             # Constants
             READY = m.Bits[1](1)
             VALID = m.Bits[1](1)
             ENABLE = True          # ??
 
+            # Reset all ready-valid signals that we control.
             # Reset ready signals in FROM queues, valid signals in TO queues
-            ready_for_dfc = ~READY
-            ready_for_cmd = ~READY
-            dtc_valid     = ~VALID
+            ready_for_dfc = ~READY     # Not ready for input from client
+            ready_for_cmd = ~READY     # Not ready for command from client
+            dtc_valid     = ~VALID     # Not ready to send data to client
 
             # Reset reg-enable signals
             redundancy_reg_enable = ~ENABLE
@@ -425,11 +417,6 @@ class StateMachine(CoopGenerator):
                 if cfc.is_valid() & (cfc.data == Command.PowerOn):
                     ready_for_cmd = ~READY     # Got data, not yet ready for next command
                     next_state = State.SendAck
-
-                # State diagram says MemOff => MemOff on command PowerOff
-                # But. Why? By default we will stay in MemOff anyway...?
-                # elif (c == Command.PowerOff): next_state = State.MemOff
-                # FIXME will client freak out if no ack from PowerOff command? grumble grumble
 
             # State SendAck
             elif cur_state == State.SendAck:
