@@ -8,7 +8,7 @@ README='''
 # Also see README.txt
 
 # To see state machine diagram:
-    display state_machine3.png
+    display state_machine.png
 
 # To automatically run, see output, and compare to prev
     ./test_state_machine.sh
@@ -294,20 +294,12 @@ class StateMachine(CoopGenerator):
         self.SRAM = m.Memory(2048, m.Bits[16])()
         self.SRAM.name = "SRAM"
 
-        # Instead of registers to transfer info, now have message queues.
-        # Coming soon: ready-valid protocol
-        # 
-        # Formerly registers o_reg, r_reg, and s_reg
-        # Now ready/valid queues CommandFromClient, DataFromClient, DataToClient
+        # Formerly used registers o_reg, r_reg, and s_reg for IO.
+        # Now, instead of registers, have ready/valid message
+        # queues CommandFromClient, DataFromClient, DataToClient
 
         # Note: Redundancy info and address info both come in via DFC queue
 
-        # MessageQueue == register DEPRECATED, instead want
-        # RcvQueue = "receive" queue w/ ready-valid protocol
-        # XmtQueue = "send" queue w/ ready-valid protocol
-
-        # OLD style MessageQueue comm (FIXME)
-        # self.CommandFromClient = MessageQueue("CommandFromClient", nbits= 4);
         self.CommandFromClient = RcvQueue(
             "CommandFromClient", nbits=4, readyvalid=True,
             data_in   = self.io.offer,
@@ -322,10 +314,6 @@ class StateMachine(CoopGenerator):
             valid_in  = self.io.receive_valid,
             ready_out = self.io.receive_ready,
         );
-
-        # OLD style comm (FIXME)
-        # self.DataToClient = MessageQueue("DataToClient", nbits=16);
-        # self.DataToClient = Queue("DataToClient", nbits=16, readyvalid=False);
 
         self.DataToClient = XmtQueue(
             "DataToClient", nbits=16, readyvalid=True,
