@@ -67,15 +67,23 @@ class Command():
     #----------------------------------
     num_commands = 5; i=0
     nbits = (num_commands-1).bit_length()
-
-    # For compatibility w/ prev version
-    nbits = 4  # Good for up to 16 commands
     #----------------------------------
     PowerOff = m.Bits[nbits](i); i=i+1
     PowerOn  = m.Bits[nbits](i); i=i+1 # not used
     Read     = m.Bits[nbits](i); i=i+1
     Write    = m.Bits[nbits](i); i=i+1
     Idle     = m.Bits[nbits](i); i=i+1
+
+class Action():
+    #----------------------------------
+    num_actions = 5; i=0
+    nbits = (num_actions-1).bit_length()
+    #----------------------------------
+    GetRedundancy = m.Bits[nbits](i); i=i+1
+    SendWakeAck   = m.Bits[nbits](i); i=i+1
+    GetAddr       = m.Bits[nbits](i); i=i+1
+    ReadMem       = m.Bits[nbits](i); i=i+1
+    WriteMem      = m.Bits[nbits](i); i=i+1
 
 class State():
     #----------------------------------
@@ -236,7 +244,7 @@ class StateMachine(CoopGenerator):
             receive_valid = m.In(m.Bits[ 1]),
             receive_ready = m.Out(m.Bits[1]),
 
-            offer       = m.In(m.Bits[4]),
+            offer       = m.In(m.Bits[Command.nbits]),
             offer_valid = m.In(m.Bits[1]),
             offer_ready = m.Out(m.Bits[1]),
 
@@ -299,8 +307,11 @@ class StateMachine(CoopGenerator):
 
         # Note: Redundancy info and address info both come in via DFC queue
 
+        # "CommandFromClient", nbits=4, readyvalid=True,
+
+
         self.CommandFromClient = RcvQueue(
-            "CommandFromClient", nbits=4, readyvalid=True,
+            "CommandFromClient", nbits=Command.nbits, readyvalid=True,
             data_in   = self.io.offer,
             valid_in  = self.io.offer_valid,
             ready_out = self.io.offer_ready
