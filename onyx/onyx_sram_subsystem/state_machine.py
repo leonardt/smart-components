@@ -1,7 +1,3 @@
-# TODO NEXT
-# - continue scrubbing the state machine i guess
-
-
 ##############################################################################
 README='''
 
@@ -23,8 +19,7 @@ beep/g'
 # To compare state machine verilog vs. prev successful run(s)
     diff ref/StateMachine.v tmpdir/StateMachine.v && echo PASS || echo FAIL
 '''
-##############################################################################
-
+########################################################################
 DBG=True
 if DBG:
     import sys
@@ -65,9 +60,10 @@ class CoopGenerator(m.Generator2):
 
 class Command():
     #----------------------------------
-    num_commands = 5; i=0
+    num_commands = 6; i=0
     nbits = (num_commands-1).bit_length()
     #----------------------------------
+    NoCommand= m.Bits[nbits](i); i=i+1
     PowerOff = m.Bits[nbits](i); i=i+1
     PowerOn  = m.Bits[nbits](i); i=i+1 # not used
     Read     = m.Bits[nbits](i); i=i+1
@@ -76,9 +72,11 @@ class Command():
 
 class Action():
     #----------------------------------
-    num_actions = 5; i=0
+    num_actions = 7; i=0
     nbits = (num_actions-1).bit_length()
     #----------------------------------
+    NoAction      = m.Bits[nbits](i); i=i+1
+    GetCommand    = m.Bits[nbits](i); i=i+1
     GetRedundancy = m.Bits[nbits](i); i=i+1
     SendWakeAck   = m.Bits[nbits](i); i=i+1
     GetAddr       = m.Bits[nbits](i); i=i+1
@@ -99,6 +97,68 @@ class State():
     WriteAddr = m.Bits[nbits](i); i=i+1 # 6
     WriteData = m.Bits[nbits](i); i=i+1 # 7
 
+########################################################################
+foo=(
+    (State.MemInit,     "action",  Action.GetRedundancy, State.MemOff),
+    (State.MemOff,      "command", Command.PowerOn,      State.SendAck),
+    (State.SendAck,     "action",  Action.SendWakeAck,   State.MemOn),
+    (State.MemOn,       "command", Command.PowerOff,     State.MemOff),
+    (State.MemOn,       "command", Command.Read,         State.ReadAddr),
+    (State.MemOn,       "command", Command.Write,        State.WriteAddr),
+    (State.ReadAddr,    "action",  Action.GetAddr,       State.ReadData),
+    (State.WriteAddr,   "action",  Action.GetAddr,       State.WriteData),
+    (State.WriteData,   "action",  Action.WriteMem,      State.MemOn),
+    (State.ReadData,    "action",  Action.ReadMem,       State.MemOn),
+)
+
+
+class Edges():
+    def __init__(self, init_state, actype, acdata, final_state):
+        self.curstate = init_state
+        self.actype = actype
+        self.acdata = acdata
+        self.nextstate = final_state
+
+ACTION  = m.Bits[1](0)
+COMMAND = m.Bits[1](1)
+
+SF = (
+    Edges(State.MemInit, ACTION,  Action.GetRedundancy, State.MemOff),
+
+    Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
+    # Yes this breaks it if we substitute the below line!
+    # Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
+)
+
+def match_action(cur_state):
+    '''If cur_state matches and no command needed, return target action'''
+    action = Action.NoAction # default    
+    for e in SF:
+        action = (cur_state == e.curstate).ite(
+            (e.actype == COMMAND).ite(
+                Action.GetCommand,
+                e.acdata),
+            action)
+    return action
+
+def match_state(cur_state, command=Command.NoCommand):
+    '''If cur_state and command both match, return target state'''
+    state = cur_state # default    
+    for e in SF:
+        state = (cur_state == e.curstate).ite(
+            # need_command.ite(
+            (e.actype == COMMAND).ite(
+                (e.acdata == command).ite(
+                    e.nextstate,
+                    state,
+                ),
+                e.nextstate,
+            ),
+            state)
+    return state
+
+
+########################################################################
 class Queue():
     '''A way to pass messages between ourself and others. Depending on
     which way you want to go, you'll use one of the subclasses
@@ -307,9 +367,6 @@ class StateMachine(CoopGenerator):
 
         # Note: Redundancy info and address info both come in via DFC queue
 
-        # "CommandFromClient", nbits=4, readyvalid=True,
-
-
         self.CommandFromClient = RcvQueue(
             "CommandFromClient", nbits=Command.nbits, readyvalid=True,
             data_in   = self.io.offer,
@@ -338,10 +395,10 @@ class StateMachine(CoopGenerator):
         super()._connect(**kwargs)
         self.io.current_state @= self.state_reg.O
 
-        # ==============================================================================
-        # Note inline_combinational() is not very robust i.e. very particular
-        # about indentation even on comments, also should avoid e.g. one-line
-        # if-then ('if a: b=1'), multiple statements on one line separated by semicolon etc.
+        # =========================================================================
+        # Note inline_combinational() is not very robust i.e. very particular about
+        # indentation even on comments, also should avoid e.g. one-line if-then
+        # ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
 
         @m.inline_combinational()
@@ -396,18 +453,27 @@ class StateMachine(CoopGenerator):
             # Default is to stay in the same state as before
             next_state = cur_state
                 
+            # Given current state, find required action e.g.
+            # 'Action.GetRedundancy' or 'Action.GetCommand'
+            info = match_action(cur_state)
+
+            # OLD
             # State 'MemInit'
-            if cur_state == State.MemInit:
+            # if cur_state == State.MemInit:
+
+            # NEW
+            if info == Action.GetRedundancy:
 
                 # Enable regs
                 redundancy_reg_enable = ENABLE
 
-
                 # Get redundancy info from client/testbench
                 # If successful, go to goto_state
 
-                # Setup
-                goto_state = State.MemOff    # Go to this state when/if successful
+                # cur_state led us to this action and not GetCommand sub-action.
+                # So now use cur_state to find next_state
+                goto_state = match_state(cur_state) # Go to this state when/if successful
+
                 ready_for_dfc = READY        # Ready for new data
                 dfc_enable = ENABLE
 
@@ -417,17 +483,27 @@ class StateMachine(CoopGenerator):
                     next_state = goto_state
 
 
+            # OLD
             # State MemOff
-            elif cur_state == State.MemOff:
+            # elif cur_state == State.MemOff:
+
+            # NEW
+            elif info == Action.GetCommand:
 
                 # Enable command reg, ready cmd queue
                 cmd_enable = ENABLE
                 ready_for_cmd = READY
 
                 # MemOff * PowerOn => goto MemOn
-                if cfc.is_valid() & (cfc.data == Command.PowerOn):
-                    ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                    next_state = State.SendAck
+                if cfc.is_valid():
+                    new_state = match_state( cur_state, cfc.data)
+        
+                    # if (cfc.data == Command.PowerOn):
+                    if (new_state != cur_state):
+
+                        ready_for_cmd = ~READY     # Got data, not yet ready for next command
+                        # next_state = State.SendAck
+                        next_state = new_state
 
             # State SendAck
             elif cur_state == State.SendAck:
@@ -455,40 +531,41 @@ class StateMachine(CoopGenerator):
 
                 # MemOn & PowerOff => goto MemOff
 
-                if cfc.is_valid() & (cfc.data == Command.PowerOff):
-                    ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                    next_state = State.MemOff
+                if cfc.is_valid():
+                    if (cfc.data == Command.PowerOff):
+                        ready_for_cmd = ~READY     # Got data, not yet ready for next command
+                        next_state = State.MemOff
 
 
 
 
-                # TODO oops time for new state diagram innit
-
-                # MemOn & Read => readmem & goto ReadAddr
-                # 
-                # READ: get address from client, send back data from mem
-                # Assumes data_from_mem magically appears when addr changes (I guess)
-
-                elif cfc.is_valid() & (cfc.data == Command.Read):
-
-                    ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-                    next_state = State.ReadAddr
-
-
-                # MemOn & Read => writemem & goto MemOff
-
-                # # WRITE: get address and data from client, send to memory
-                # # messages from client arrive via r_reg (receive reg)
-                # # Assumes DataFromClient magically chenges when read I guess...?
-                # elif cfc.data == Command.Write:
-                #     addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
-                #     data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
-                #     next_state = State.MemOn
+                        # TODO oops time for new state diagram innit
+                        
+                        # MemOn & Read => readmem & goto ReadAddr
+                        # 
+                        # READ: get address from client, send back data from mem
+                        # Assumes data_from_mem magically appears when addr changes (I guess)
+                        
+                    elif (cfc.data == Command.Read):
+                    
+                        ready_for_cmd = ~READY                  # Got data, not yet ready for next command
+                        next_state = State.ReadAddr
 
 
-                elif cfc.is_valid() & (cfc.data == Command.Write):
-                    ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-                    next_state = State.WriteAddr
+                        # MemOn & Read => writemem & goto MemOff
+
+                        # # WRITE: get address and data from client, send to memory
+                        # # messages from client arrive via r_reg (receive reg)
+                        # # Assumes DataFromClient magically chenges when read I guess...?
+                        # elif cfc.data == Command.Write:
+                        #     addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
+                        #     data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
+                        #     next_state = State.MemOn
+
+
+                    elif (cfc.data == Command.Write):
+                        ready_for_cmd = ~READY                  # Got data, not yet ready for next command
+                        next_state = State.WriteAddr
 
 
             # State ReadAddr
