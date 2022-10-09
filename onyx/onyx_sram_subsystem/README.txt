@@ -1,7 +1,9 @@
 # For latest info see README at top of state_machine.py
 # "single source of truth"
 
-# ------------------------------------------------------------------------
+# To automatically run, see output, and compare to prev
+    ./test_state_machine.sh
+
 # To see state machine diagram:
     display state_machine.png
 
@@ -14,9 +16,6 @@ beep/g'
 
 # To compare state machine verilog vs. prev successful run(s)
     diff ref/StateMachine.v build/StateMachine.v && echo PASS || echo FAIL
-
-# To automatically run, see output, and compare to prev
-    ./test_state_machine.sh
 
 # ------------------------------------------------------------------------
 # Sample output as of 09/28/2022
