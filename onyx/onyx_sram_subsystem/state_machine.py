@@ -113,6 +113,58 @@ mygraph = (
     (State.ReadData,  ACTION,  Action.ReadData,     State.MemOn),
 )
 
+mygraph_string = '''
+    (State.MemInit,  ACTION,  Action.GetRedundancy, State.MemOff),
+    (State.MemOff,   COMMAND, Command.PowerOn,      State.SendAck),
+    (State.MemOn,     COMMAND, Command.PowerOff,    State.MemOff),
+    (State.MemOn,     COMMAND, Command.Read,        State.ReadAddr),
+    (State.MemOn,     COMMAND, Command.Write,       State.WriteAddr),
+    (State.SendAck,   ACTION,  Action.SendAck,      State.MemOn),
+    (State.ReadAddr,  ACTION,  Action.GetAddr,      State.ReadData),
+    (State.WriteAddr, ACTION,  Action.GetAddr,      State.WriteData),
+    (State.WriteData, ACTION,  Action.WriteData,    State.MemOn),
+    (State.ReadData,  ACTION,  Action.ReadData,     State.MemOn),
+'''
+
+
+def build_dot_graph(graph):
+    '''
+    # Example: build_dot_graph(mygraph_string)
+    # digraph Diagram { node [shape=box]
+    #   MemInit   -> MemOff    [ label=GetRedundancy ]
+    #   MemOff    -> SendAck   [ label=PowerOn ]
+    #   MemOn     -> MemOff    [ label=PowerOff ]
+    #   MemOn     -> ReadAddr  [ label=Read ]
+    #   MemOn     -> WriteAddr [ label=Write ]
+    #   SendAck   -> MemOn     [ label=SendAck ]
+    #   ReadAddr  -> ReadData  [ label=GetAddr ]
+    #   WriteAddr -> WriteData [ label=GetAddr ]
+    #   WriteData -> MemOn     [ label=WriteData ]
+    #   ReadData  -> MemOn     [ label=ReadData ]
+    '''
+    print('digraph Diagram { node [shape=box]')
+    for line in graph.split("\n"):
+        words = line.split()
+        if not words: continue
+        #
+        # E.g. '(State.MemInit,' => 'MemInit'
+        from_state = words[0][7:-1]
+        #
+        ac = words[1]
+        if (ac == "ACTION,"):
+            label = words[2][7:-1]
+        else:
+            label = words[2][8:-1]
+        #
+        to_state = words[3][6:-2]
+        #
+        print(f'  {from_state:9} -> {to_state:9} [ label={label} ]')
+    print('}\n')
+
+
+
+
+
 # To test/break, can replace e.g.
 # <   (State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
 # >   (State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
