@@ -98,74 +98,66 @@ class State():
     WriteAddr = m.Bits[nbits](i); i=i+1 # 6
     WriteData = m.Bits[nbits](i); i=i+1 # 7
 
-########################################################################
-# foo=(
-#     (State.MemInit,     "action",  Action.GetRedundancy, State.MemOff),
-#     (State.MemOff,      "command", Command.PowerOn,      State.SendAck),
-#     (State.SendAck,     "action",  Action.SendAck,   State.MemOn),
-#     (State.MemOn,       "command", Command.PowerOff,     State.MemOff),
-#     (State.MemOn,       "command", Command.Read,         State.ReadAddr),
-#     (State.MemOn,       "command", Command.Write,        State.WriteAddr),
-#     (State.ReadAddr,    "action",  Action.GetAddr,       State.ReadData),
-#     (State.WriteAddr,   "action",  Action.GetAddr,       State.WriteData),
-#     (State.WriteData,   "action",  Action.WriteData,      State.MemOn),
-#     (State.ReadData,    "action",  Action.ReadData,       State.MemOn),
-# )
-
-
-class Edges():
-    def __init__(self, init_state, actype, acdata, final_state):
-        self.curstate  = init_state
-        self.actype    = actype
-        self.acdata    = acdata
-        self.nextstate = final_state
-
 ACTION  = m.Bits[1](0)
 COMMAND = m.Bits[1](1)
-
-SF = (
-    Edges(State.MemInit, ACTION,  Action.GetRedundancy, State.MemOff),
-
-    Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
-    # Yes this breaks correctly it if we substitute the below line!
-    # Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
-
-    Edges(State.MemOn,     COMMAND, Command.PowerOff, State.MemOff),
-    Edges(State.MemOn,     COMMAND, Command.Read,     State.ReadAddr),
-    Edges(State.MemOn,     COMMAND, Command.Write,    State.WriteAddr),
-    Edges(State.SendAck,   ACTION,  Action.SendAck,   State.MemOn),
-    Edges(State.ReadAddr,  ACTION,  Action.GetAddr,   State.ReadData),
-    Edges(State.WriteAddr, ACTION,  Action.GetAddr,   State.WriteData),
-    Edges(State.WriteData, ACTION,  Action.WriteData, State.MemOn),
-    Edges(State.ReadData,  ACTION,  Action.ReadData,  State.MemOn),
+mygraph = (
+    (State.MemInit,  ACTION,  Action.GetRedundancy, State.MemOff),
+    (State.MemOff,   COMMAND, Command.PowerOn,      State.SendAck),
+    (State.MemOn,     COMMAND, Command.PowerOff,    State.MemOff),
+    (State.MemOn,     COMMAND, Command.Read,        State.ReadAddr),
+    (State.MemOn,     COMMAND, Command.Write,       State.WriteAddr),
+    (State.SendAck,   ACTION,  Action.SendAck,      State.MemOn),
+    (State.ReadAddr,  ACTION,  Action.GetAddr,      State.ReadData),
+    (State.WriteAddr, ACTION,  Action.GetAddr,      State.WriteData),
+    (State.WriteData, ACTION,  Action.WriteData,    State.MemOn),
+    (State.ReadData,  ACTION,  Action.ReadData,     State.MemOn),
 )
 
-def match_action(cur_state):
-    '''If cur_state matches and no command needed, return target action'''
-    action = Action.NoAction # default    
-    for e in SF:
-        action = (cur_state == e.curstate).ite(
-            (e.actype == COMMAND).ite(
-                Action.GetCommand,
-                e.acdata),
-            action)
-    return action
+# To test/break, can replace e.g.
+# <   (State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
+# >   (State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
 
-def match_state(cur_state, command=Command.NoCommand):
-    '''If cur_state and command both match, return target state'''
-    state = cur_state # default    
-    for e in SF:
-        state = (cur_state == e.curstate).ite(
-            # need_command.ite(
-            (e.actype == COMMAND).ite(
-                (e.acdata == command).ite(
-                    e.nextstate,
-                    state,
+
+class StateMachineGraph():
+    def __init__(self, *args):
+        self.graph = []
+        for a in args: self.graph.append(a)
+        
+    def curstate  (self, edge): return edge[0]
+    def actype    (self, edge): return edge[1]
+    def acdata    (self, edge): return edge[2]
+    def nextstate (self, edge): return edge[3]
+
+    def action(self, cur_state):
+        '''If cur_state matches and no command needed, return target action'''
+        action = Action.NoAction # default    
+        for e in self.graph:
+            action = (cur_state == self.curstate(e) ).ite(
+                (self.actype(e) == COMMAND).ite(
+                    Action.GetCommand,
+                    self.acdata(e)),
+                action)
+        return action
+            
+    def state(self, cur_state, command=Command.NoCommand):
+        '''If cur_state and command both match, return target state'''
+        state = cur_state # default    
+        for e in self.graph:
+            state = (cur_state == self.curstate(e)).ite(
+                # need_command.ite(
+                (self.actype(e) == COMMAND).ite(
+                    (self.acdata(e) == command).ite(
+                        self.nextstate(e),
+                        state,
+                    ),
+                    self.nextstate(e),
                 ),
-                e.nextstate,
-            ),
-            state)
-    return state
+                state)
+        return state
+
+    # FIXME/TODO def dot() etc.
+
+smg = StateMachineGraph(*mygraph)
 
 
 ########################################################################
@@ -465,7 +457,8 @@ class StateMachine(CoopGenerator):
                 
             # Given current state, find required action e.g.
             # 'Action.GetRedundancy' or 'Action.GetCommand'
-            info = match_action(cur_state)
+            # info = match_action(cur_state)
+            info = smg.action(cur_state)
 
             if info == Action.GetCommand:
 
@@ -473,28 +466,21 @@ class StateMachine(CoopGenerator):
                 cmd_enable = ENABLE
                 ready_for_cmd = READY
 
-                # MemOff * PowerOn => goto MemOn
+                # E.g. cur_state==MemOff and cfc.data==PowerOn => goto MemOn
                 if cfc.is_valid():
-                    new_state = match_state( cur_state, cfc.data)
-        
-                    # if (cfc.data == Command.PowerOn):
+                    new_state = smg.state( cur_state, cfc.data)
                     if (new_state != cur_state):
-
                         ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                        # next_state = State.SendAck
                         next_state = new_state
 
+            # FIXME remaining elif's should have more parallel structure :(
             elif info == Action.GetRedundancy:
 
                 # Enable regs
                 redundancy_reg_enable = ENABLE
 
                 # Get redundancy info from client/testbench
-                # If successful, go to goto_state
-
-                # cur_state led us to this action and not GetCommand sub-action.
-                # So now use cur_state to find next_state
-                goto_state = match_state(cur_state) # Go to this state when/if successful
+                # If successful, go to next_state
 
                 ready_for_dfc = READY        # Ready for new data
                 dfc_enable = ENABLE
@@ -502,7 +488,7 @@ class StateMachine(CoopGenerator):
                 if dfc.is_valid():
                     redundancy_data = dfc.data
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = goto_state
+                    next_state = smg.state(cur_state)
 
 
             elif info == Action.SendAck:
@@ -515,7 +501,7 @@ class StateMachine(CoopGenerator):
                 # dtc READY means they got the data and we can all move on
                 if dtc.is_ready():
                     # next_state = State.MemOn
-                    next_state = match_state(cur_state)
+                    next_state = smg.state(cur_state)
 
                     # Reset
                     dtc_valid  = ~VALID
@@ -539,7 +525,7 @@ class StateMachine(CoopGenerator):
                 if dfc.is_valid():
                     addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = match_state(cur_state)
+                    next_state = smg.state(cur_state)
 
 
             # State WriteData is similar to ReadAddr/WriteAddr
@@ -566,7 +552,7 @@ class StateMachine(CoopGenerator):
                     SRAM_wdata = dfc.data            # Data from client
                     ready_for_dfc = ~READY           # Not yet ready for next data
                     # next_state = State.MemOn
-                    next_state = match_state(cur_state)
+                    next_state = smg.state(cur_state)
 
 
             # State ReadData
@@ -582,7 +568,7 @@ class StateMachine(CoopGenerator):
 
                 # dtc READY means they got the data and we can all move on
                 if dtc.is_ready():
-                    next_state = match_state(cur_state)
+                    next_state = smg.state(cur_state)
                     # next_state = State.MemOn
 
                     # Reset
