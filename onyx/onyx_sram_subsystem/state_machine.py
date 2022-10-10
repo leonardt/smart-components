@@ -126,43 +126,35 @@ mygraph_string = '''
     (State.ReadData,  ACTION,  Action.ReadData,     State.MemOn),
 '''
 
-
 def build_dot_graph(graph):
     '''
-    # Example: build_dot_graph(mygraph_string)
-    # digraph Diagram { node [shape=box]
-    #   MemInit   -> MemOff    [ label=GetRedundancy ]
-    #   MemOff    -> SendAck   [ label=PowerOn ]
-    #   MemOn     -> MemOff    [ label=PowerOff ]
-    #   MemOn     -> ReadAddr  [ label=Read ]
-    #   MemOn     -> WriteAddr [ label=Write ]
-    #   SendAck   -> MemOn     [ label=SendAck ]
-    #   ReadAddr  -> ReadData  [ label=GetAddr ]
-    #   WriteAddr -> WriteData [ label=GetAddr ]
-    #   WriteData -> MemOn     [ label=WriteData ]
-    #   ReadData  -> MemOn     [ label=ReadData ]
+    # Example: build_dot_graph(mygraph_string) =>
+    # 
+    #     digraph Diagram { node [shape=box];
+    #       "MemInit"   -> "MemOff"    [label="GetRedundancy()"];
+    #       "MemOff"    -> "SendAck"   [label="PowerOn"];
+    #       "MemOn"     -> "MemOff"    [label="PowerOff"];
+    #       "MemOn"     -> "ReadAddr"  [label="Read"];
+    #       "MemOn"     -> "WriteAddr" [label="Write"];
+    #       "SendAck"   -> "MemOn"     [label="SendAck()"];
+    #       "ReadAddr"  -> "ReadData"  [label="GetAddr()"];
+    #       "WriteAddr" -> "WriteData" [label="GetAddr()"];
+    #       "WriteData" -> "MemOn"     [label="WriteData()"];
+    #       "ReadData"  -> "MemOn"     [label="ReadData()"];
+    #     }
     '''
-    print('digraph Diagram { node [shape=box]')
+    def quote(word): return '"' + word + '"'
+    print('digraph Diagram { node [shape=box];')
     for line in graph.split("\n"):
         words = line.split()
         if not words: continue
-        #
-        # E.g. '(State.MemInit,' => 'MemInit'
         from_state = words[0][7:-1]
-        #
         ac = words[1]
-        if (ac == "ACTION,"):
-            label = words[2][7:-1]
-        else:
-            label = words[2][8:-1]
-        #
+        if (ac == "ACTION,"): label = words[2][7:-1] + "()"
+        else:                 label = words[2][8:-1]
         to_state = words[3][6:-2]
-        #
-        print(f'  {from_state:9} -> {to_state:9} [ label={label} ]')
+        print(f'  {quote(from_state):11} -> {quote(to_state):11} [label={quote(label)}];')
     print('}\n')
-
-
-
 
 
 # To test/break, can replace e.g.

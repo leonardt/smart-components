@@ -1,0 +1,12 @@
+digraph Diagram { node [shape=box]
+  MemInit   -> MemOff    [ label="GetRedundancy()" ]
+  MemOff    -> SendAck   [ label=PowerOn ]
+  MemOn     -> MemOff    [ label=PowerOff ]
+  MemOn     -> ReadAddr  [ label=Read ]
+  MemOn     -> WriteAddr [ label=Write ]
+  SendAck   -> MemOn     [ label="SendAck()" ]
+  ReadAddr  -> ReadData  [ label="GetAddr()" ]
+  WriteAddr -> WriteData [ label="GetAddr()" ]
+  WriteData -> MemOn     [ label=WriteData ]
+  ReadData  -> MemOn     [ label=ReadData ]
+}
