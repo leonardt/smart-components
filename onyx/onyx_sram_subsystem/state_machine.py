@@ -128,6 +128,12 @@ SF = (
     Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
     # Yes this breaks it if we substitute the below line!
     # Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
+
+    Edges(State.MemOn,  COMMAND, Command.PowerOff,      State.MemOff),
+    Edges(State.MemOn,  COMMAND, Command.Read,      State.ReadAddr),
+    Edges(State.MemOn,  COMMAND, Command.Write,      State.WriteAddr),
+
+
 )
 
 def match_action(cur_state):
@@ -522,50 +528,7 @@ class StateMachine(CoopGenerator):
                     dtc_enable = ~ENABLE
 
 
-            # State MemOn
-            elif cur_state == State.MemOn:
-
-                # Enable command reg, ready cmd queue
-                cmd_enable = ENABLE
-                ready_for_cmd = READY
-
-                # MemOn & PowerOff => goto MemOff
-
-                if cfc.is_valid():
-                    if (cfc.data == Command.PowerOff):
-                        ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                        next_state = State.MemOff
-
-
-
-
-                        # TODO oops time for new state diagram innit
-                        
-                        # MemOn & Read => readmem & goto ReadAddr
-                        # 
-                        # READ: get address from client, send back data from mem
-                        # Assumes data_from_mem magically appears when addr changes (I guess)
-                        
-                    elif (cfc.data == Command.Read):
-                    
-                        ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-                        next_state = State.ReadAddr
-
-
-                        # MemOn & Read => writemem & goto MemOff
-
-                        # # WRITE: get address and data from client, send to memory
-                        # # messages from client arrive via r_reg (receive reg)
-                        # # Assumes DataFromClient magically chenges when read I guess...?
-                        # elif cfc.data == Command.Write:
-                        #     addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
-                        #     data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
-                        #     next_state = State.MemOn
-
-
-                    elif (cfc.data == Command.Write):
-                        ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-                        next_state = State.WriteAddr
+            # State MemOn: GONE!!! See far below for old State MemOn
 
 
             # State ReadAddr
@@ -1040,3 +1003,54 @@ def test_state_machine_fault():
 beep/g'    """)
 
 test_state_machine_fault()
+
+
+
+
+#             # State MemOn
+#             elif cur_state == State.MemOn:
+# 
+#                 # Enable command reg, ready cmd queue
+#                 cmd_enable = ENABLE
+#                 ready_for_cmd = READY
+# 
+#                 # MemOn & PowerOff => goto MemOff
+# 
+#                 if cfc.is_valid():
+# 
+#                     # if (cfc.data == Command.PowerOff):
+#                     #     ready_for_cmd = ~READY     # Got data, not yet ready for next command
+#                     #     next_state = State.MemOff
+# 
+# 
+# 
+# 
+#                         # TODO oops time for new state diagram innit
+#                         
+#                         # MemOn & Read => readmem & goto ReadAddr
+#                         # 
+#                         # READ: get address from client, send back data from mem
+#                         # Assumes data_from_mem magically appears when addr changes (I guess)
+#                         
+#                     if (cfc.data == Command.Read):
+#                     
+#                         ready_for_cmd = ~READY                  # Got data, not yet ready for next command
+#                         next_state = State.ReadAddr
+# 
+# 
+#                         # MemOn & Read => writemem & goto MemOff
+# 
+#                         # # WRITE: get address and data from client, send to memory
+#                         # # messages from client arrive via r_reg (receive reg)
+#                         # # Assumes DataFromClient magically chenges when read I guess...?
+#                         # elif cfc.data == Command.Write:
+#                         #     addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
+#                         #     data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
+#                         #     next_state = State.MemOn
+# 
+# 
+#                     elif (cfc.data == Command.Write):
+#                         ready_for_cmd = ~READY                  # Got data, not yet ready for next command
+#                         next_state = State.WriteAddr
+# 
+# 
