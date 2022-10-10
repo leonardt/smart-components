@@ -78,10 +78,11 @@ class Action():
     NoAction      = m.Bits[nbits](i); i=i+1
     GetCommand    = m.Bits[nbits](i); i=i+1
     GetRedundancy = m.Bits[nbits](i); i=i+1
-    SendWakeAck   = m.Bits[nbits](i); i=i+1
+    SendAck       = m.Bits[nbits](i); i=i+1
     GetAddr       = m.Bits[nbits](i); i=i+1
-    ReadMem       = m.Bits[nbits](i); i=i+1
-    WriteMem      = m.Bits[nbits](i); i=i+1
+    ReadData      = m.Bits[nbits](i); i=i+1
+    WriteData     = m.Bits[nbits](i); i=i+1
+
 
 class State():
     #----------------------------------
@@ -98,25 +99,25 @@ class State():
     WriteData = m.Bits[nbits](i); i=i+1 # 7
 
 ########################################################################
-foo=(
-    (State.MemInit,     "action",  Action.GetRedundancy, State.MemOff),
-    (State.MemOff,      "command", Command.PowerOn,      State.SendAck),
-    (State.SendAck,     "action",  Action.SendWakeAck,   State.MemOn),
-    (State.MemOn,       "command", Command.PowerOff,     State.MemOff),
-    (State.MemOn,       "command", Command.Read,         State.ReadAddr),
-    (State.MemOn,       "command", Command.Write,        State.WriteAddr),
-    (State.ReadAddr,    "action",  Action.GetAddr,       State.ReadData),
-    (State.WriteAddr,   "action",  Action.GetAddr,       State.WriteData),
-    (State.WriteData,   "action",  Action.WriteMem,      State.MemOn),
-    (State.ReadData,    "action",  Action.ReadMem,       State.MemOn),
-)
+# foo=(
+#     (State.MemInit,     "action",  Action.GetRedundancy, State.MemOff),
+#     (State.MemOff,      "command", Command.PowerOn,      State.SendAck),
+#     (State.SendAck,     "action",  Action.SendAck,   State.MemOn),
+#     (State.MemOn,       "command", Command.PowerOff,     State.MemOff),
+#     (State.MemOn,       "command", Command.Read,         State.ReadAddr),
+#     (State.MemOn,       "command", Command.Write,        State.WriteAddr),
+#     (State.ReadAddr,    "action",  Action.GetAddr,       State.ReadData),
+#     (State.WriteAddr,   "action",  Action.GetAddr,       State.WriteData),
+#     (State.WriteData,   "action",  Action.WriteData,      State.MemOn),
+#     (State.ReadData,    "action",  Action.ReadData,       State.MemOn),
+# )
 
 
 class Edges():
     def __init__(self, init_state, actype, acdata, final_state):
-        self.curstate = init_state
-        self.actype = actype
-        self.acdata = acdata
+        self.curstate  = init_state
+        self.actype    = actype
+        self.acdata    = acdata
         self.nextstate = final_state
 
 ACTION  = m.Bits[1](0)
@@ -126,14 +127,17 @@ SF = (
     Edges(State.MemInit, ACTION,  Action.GetRedundancy, State.MemOff),
 
     Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
-    # Yes this breaks it if we substitute the below line!
+    # Yes this breaks correctly it if we substitute the below line!
     # Edges(State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
 
-    Edges(State.MemOn,  COMMAND, Command.PowerOff,      State.MemOff),
-    Edges(State.MemOn,  COMMAND, Command.Read,      State.ReadAddr),
-    Edges(State.MemOn,  COMMAND, Command.Write,      State.WriteAddr),
-
-
+    Edges(State.MemOn,     COMMAND, Command.PowerOff, State.MemOff),
+    Edges(State.MemOn,     COMMAND, Command.Read,     State.ReadAddr),
+    Edges(State.MemOn,     COMMAND, Command.Write,    State.WriteAddr),
+    Edges(State.SendAck,   ACTION,  Action.SendAck,   State.MemOn),
+    Edges(State.ReadAddr,  ACTION,  Action.GetAddr,   State.ReadData),
+    Edges(State.WriteAddr, ACTION,  Action.GetAddr,   State.WriteData),
+    Edges(State.WriteData, ACTION,  Action.WriteData, State.MemOn),
+    Edges(State.ReadData,  ACTION,  Action.ReadData,  State.MemOn),
 )
 
 def match_action(cur_state):
@@ -463,12 +467,24 @@ class StateMachine(CoopGenerator):
             # 'Action.GetRedundancy' or 'Action.GetCommand'
             info = match_action(cur_state)
 
-            # OLD
-            # State 'MemInit'
-            # if cur_state == State.MemInit:
+            if info == Action.GetCommand:
 
-            # NEW
-            if info == Action.GetRedundancy:
+                # Enable command reg, ready cmd queue
+                cmd_enable = ENABLE
+                ready_for_cmd = READY
+
+                # MemOff * PowerOn => goto MemOn
+                if cfc.is_valid():
+                    new_state = match_state( cur_state, cfc.data)
+        
+                    # if (cfc.data == Command.PowerOn):
+                    if (new_state != cur_state):
+
+                        ready_for_cmd = ~READY     # Got data, not yet ready for next command
+                        # next_state = State.SendAck
+                        next_state = new_state
+
+            elif info == Action.GetRedundancy:
 
                 # Enable regs
                 redundancy_reg_enable = ENABLE
@@ -489,30 +505,7 @@ class StateMachine(CoopGenerator):
                     next_state = goto_state
 
 
-            # OLD
-            # State MemOff
-            # elif cur_state == State.MemOff:
-
-            # NEW
-            elif info == Action.GetCommand:
-
-                # Enable command reg, ready cmd queue
-                cmd_enable = ENABLE
-                ready_for_cmd = READY
-
-                # MemOff * PowerOn => goto MemOn
-                if cfc.is_valid():
-                    new_state = match_state( cur_state, cfc.data)
-        
-                    # if (cfc.data == Command.PowerOn):
-                    if (new_state != cur_state):
-
-                        ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                        # next_state = State.SendAck
-                        next_state = new_state
-
-            # State SendAck
-            elif cur_state == State.SendAck:
+            elif info == Action.SendAck:
 
                 # Setup
                 dtc_enable = ENABLE
@@ -521,7 +514,8 @@ class StateMachine(CoopGenerator):
 
                 # dtc READY means they got the data and we can all move on
                 if dtc.is_ready():
-                    next_state = State.MemOn
+                    # next_state = State.MemOn
+                    next_state = match_state(cur_state)
 
                     # Reset
                     dtc_valid  = ~VALID
@@ -532,24 +526,7 @@ class StateMachine(CoopGenerator):
 
 
             # State ReadAddr
-            elif cur_state == State.ReadAddr:
-
-                # Enable regs
-                dfc_enable         = ENABLE
-                addr_to_mem_enable = ENABLE
-
-                # Get read-address info from client/testbench
-                # If successful, go to state ReadData
-
-                ready_for_dfc = READY        # Ready for new data
-                if dfc.is_valid():
-                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
-                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = State.ReadData
-
-
-            # State WriteAddr is nearly identical to ReadAddr (exc. next_state)
-            elif cur_state == State.WriteAddr:
+            elif info == Action.GetAddr:
 
                 # Setup
                 dfc_enable         = ENABLE
@@ -562,11 +539,12 @@ class StateMachine(CoopGenerator):
                 if dfc.is_valid():
                     addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = State.WriteData
+                    next_state = match_state(cur_state)
 
 
             # State WriteData is similar to ReadAddr/WriteAddr
-            elif cur_state == State.WriteData:
+            # elif cur_state == State.WriteData:
+            elif info == Action.WriteData:
 
                 # Get data from client, write it to SRAM
                 # If successful, go to state MemOn
@@ -587,11 +565,13 @@ class StateMachine(CoopGenerator):
                     SRAM_waddr = addr_to_mem[0:11]   # Address from prev step
                     SRAM_wdata = dfc.data            # Data from client
                     ready_for_dfc = ~READY           # Not yet ready for next data
-                    next_state = State.MemOn
+                    # next_state = State.MemOn
+                    next_state = match_state(cur_state)
 
 
             # State ReadData
-            elif cur_state == State.ReadData:
+            # elif cur_state == State.ReadData:
+            elif info == Action.ReadData:
 
                 # Setup
                 dtc_enable = ENABLE
@@ -602,7 +582,8 @@ class StateMachine(CoopGenerator):
 
                 # dtc READY means they got the data and we can all move on
                 if dtc.is_ready():
-                    next_state = State.MemOn
+                    next_state = match_state(cur_state)
+                    # next_state = State.MemOn
 
                     # Reset
                     dtc_valid  = ~VALID
@@ -1003,54 +984,3 @@ def test_state_machine_fault():
 beep/g'    """)
 
 test_state_machine_fault()
-
-
-
-
-#             # State MemOn
-#             elif cur_state == State.MemOn:
-# 
-#                 # Enable command reg, ready cmd queue
-#                 cmd_enable = ENABLE
-#                 ready_for_cmd = READY
-# 
-#                 # MemOn & PowerOff => goto MemOff
-# 
-#                 if cfc.is_valid():
-# 
-#                     # if (cfc.data == Command.PowerOff):
-#                     #     ready_for_cmd = ~READY     # Got data, not yet ready for next command
-#                     #     next_state = State.MemOff
-# 
-# 
-# 
-# 
-#                         # TODO oops time for new state diagram innit
-#                         
-#                         # MemOn & Read => readmem & goto ReadAddr
-#                         # 
-#                         # READ: get address from client, send back data from mem
-#                         # Assumes data_from_mem magically appears when addr changes (I guess)
-#                         
-#                     if (cfc.data == Command.Read):
-#                     
-#                         ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-#                         next_state = State.ReadAddr
-# 
-# 
-#                         # MemOn & Read => writemem & goto MemOff
-# 
-#                         # # WRITE: get address and data from client, send to memory
-#                         # # messages from client arrive via r_reg (receive reg)
-#                         # # Assumes DataFromClient magically chenges when read I guess...?
-#                         # elif cfc.data == Command.Write:
-#                         #     addr_to_mem = self.DataFromClient.get() # Receive(Addr) [from client requesting mem write]
-#                         #     data        = self.DataFromClient.get() # Receive(Data) [from client requesting mem write]
-#                         #     next_state = State.MemOn
-# 
-# 
-#                     elif (cfc.data == Command.Write):
-#                         ready_for_cmd = ~READY                  # Got data, not yet ready for next command
-#                         next_state = State.WriteAddr
-# 
-# 
