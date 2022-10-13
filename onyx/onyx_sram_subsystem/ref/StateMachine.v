@@ -260,6 +260,24 @@ coreir_reg #(
 assign O = reg_P3_inst0_out;
 endmodule
 
+module Mux2xEnable (
+    input I0/*verilator public*/,
+    input I1/*verilator public*/,
+    input S/*verilator public*/,
+    output O/*verilator public*/
+);
+wire [0:0] coreir_commonlib_mux2x1_inst0_out;
+wire [0:0] coreir_commonlib_mux2x1_inst0_in_data [1:0];
+assign coreir_commonlib_mux2x1_inst0_in_data[1] = I1;
+assign coreir_commonlib_mux2x1_inst0_in_data[0] = I0;
+commonlib_muxn__N2__width1 coreir_commonlib_mux2x1_inst0 (
+    .in_data(coreir_commonlib_mux2x1_inst0_in_data),
+    .in_sel(S),
+    .out(coreir_commonlib_mux2x1_inst0_out)
+);
+assign O = coreir_commonlib_mux2x1_inst0_out[0];
+endmodule
+
 module Mux2xBits3 (
     input [2:0] I0/*verilator public*/,
     input [2:0] I1/*verilator public*/,
@@ -402,29 +420,29 @@ commonlib_muxn__N2__width1 coreir_commonlib_mux2x1_inst0 (
 assign O = coreir_commonlib_mux2x1_inst0_out[0];
 endmodule
 
-module Memory_unq1 (
-    input [7:0] RADDR/*verilator public*/,
+module Memory (
+    input [10:0] RADDR/*verilator public*/,
     output [15:0] RDATA/*verilator public*/,
     input CLK/*verilator public*/,
-    input [7:0] WADDR/*verilator public*/,
+    input [10:0] WADDR/*verilator public*/,
     input [15:0] WDATA/*verilator public*/,
     input WE/*verilator public*/
 );
-wire [15:0] coreir_mem256x16_inst0_rdata;
+wire [15:0] coreir_mem2048x16_inst0_rdata;
 coreir_mem #(
-    .depth(256),
+    .depth(2048),
     .has_init(1'b0),
     .sync_read(1'b0),
     .width(16)
-) coreir_mem256x16_inst0 (
+) coreir_mem2048x16_inst0 (
     .clk(CLK),
     .wdata(WDATA),
     .waddr(WADDR),
     .wen(WE),
-    .rdata(coreir_mem256x16_inst0_rdata),
+    .rdata(coreir_mem2048x16_inst0_rdata),
     .raddr(RADDR)
 );
-assign RDATA = coreir_mem256x16_inst0_rdata;
+assign RDATA = coreir_mem2048x16_inst0_rdata;
 endmodule
 
 module SRAMSM (
@@ -434,7 +452,7 @@ module SRAMSM (
     output [15:0] RDATA/*verilator public*/,
     input REn/*verilator public*/,
     input CLK/*verilator public*/,
-    input [7:0] ADDR/*verilator public*/,
+    input [10:0] ADDR/*verilator public*/,
     input deep_sleep/*verilator public*/,
     input power_gate/*verilator public*/,
     output wake_ack/*verilator public*/,
@@ -456,7 +474,7 @@ wire magma_Bits_2_eq_inst0_out;
 wire magma_Bits_2_eq_inst1_out;
 wire magma_Bits_2_eq_inst2_out;
 wire magma_Bits_2_eq_inst3_out;
-Memory_unq1 Memory_inst0 (
+Memory Memory_inst0 (
     .RADDR(ADDR),
     .RDATA(Memory_inst0_RDATA),
     .CLK(CLK),
@@ -560,31 +578,6 @@ assign wake_ack = magma_Bits_2_eq_inst2_out;
 assign current_state = {power_gate,deep_sleep};
 endmodule
 
-module Memory (
-    input [10:0] RADDR/*verilator public*/,
-    output [15:0] RDATA/*verilator public*/,
-    input CLK/*verilator public*/,
-    input [10:0] WADDR/*verilator public*/,
-    input [15:0] WDATA/*verilator public*/,
-    input WE/*verilator public*/
-);
-wire [15:0] coreir_mem2048x16_inst0_rdata;
-coreir_mem #(
-    .depth(2048),
-    .has_init(1'b0),
-    .sync_read(1'b0),
-    .width(16)
-) coreir_mem2048x16_inst0 (
-    .clk(CLK),
-    .wdata(WDATA),
-    .waddr(WADDR),
-    .wen(WE),
-    .rdata(coreir_mem2048x16_inst0_rdata),
-    .raddr(RADDR)
-);
-assign RDATA = coreir_mem2048x16_inst0_rdata;
-endmodule
-
 module StateMachine (
     input [15:0] receive/*verilator public*/,
     input [0:0] receive_valid/*verilator public*/,
@@ -630,6 +623,7 @@ wire [10:0] Mux2xBits11_inst2_O;
 wire [10:0] Mux2xBits11_inst3_O;
 wire [10:0] Mux2xBits11_inst4_O;
 wire [10:0] Mux2xBits11_inst5_O;
+wire [10:0] Mux2xBits11_inst6_O;
 wire [15:0] Mux2xBits16_inst0_O;
 wire [15:0] Mux2xBits16_inst1_O;
 wire [15:0] Mux2xBits16_inst10_O;
@@ -883,7 +877,18 @@ wire [2:0] Mux2xBits3_inst96_O;
 wire [2:0] Mux2xBits3_inst97_O;
 wire [2:0] Mux2xBits3_inst98_O;
 wire [2:0] Mux2xBits3_inst99_O;
-wire [15:0] SRAM_RDATA;
+wire Mux2xEnable_inst0_O;
+wire Mux2xEnable_inst1_O;
+wire Mux2xEnable_inst10_O;
+wire Mux2xEnable_inst11_O;
+wire Mux2xEnable_inst2_O;
+wire Mux2xEnable_inst3_O;
+wire Mux2xEnable_inst4_O;
+wire Mux2xEnable_inst5_O;
+wire Mux2xEnable_inst6_O;
+wire Mux2xEnable_inst7_O;
+wire Mux2xEnable_inst8_O;
+wire Mux2xEnable_inst9_O;
 wire [15:0] SRAMSM_inst0_RDATA;
 wire SRAMSM_inst0_wake_ack;
 wire [1:0] SRAMSM_inst0_current_state;
@@ -891,7 +896,6 @@ wire bit_const_0_None_out;
 wire bit_const_1_None_out;
 wire [0:0] const_0_1_out;
 wire [2:0] const_0_3_out;
-wire [15:0] const_10066_16_out;
 wire [15:0] const_13_16_out;
 wire [15:0] const_15_16_out;
 wire [15:0] const_16_16_out;
@@ -899,10 +903,11 @@ wire [0:0] const_1_1_out;
 wire [2:0] const_1_3_out;
 wire [2:0] const_2_3_out;
 wire [2:0] const_3_3_out;
+wire [15:0] const_4198_16_out;
+wire [15:0] const_4215_16_out;
 wire [2:0] const_4_3_out;
 wire [2:0] const_5_3_out;
 wire [10:0] const_66_11_out;
-wire [7:0] const_66_8_out;
 wire [2:0] const_6_3_out;
 wire [2:0] const_7_3_out;
 wire [0:0] initreg_O;
@@ -1293,33 +1298,39 @@ Mux2xBits11 Mux2xBits11_inst0 (
 );
 Mux2xBits11 Mux2xBits11_inst1 (
     .I0(const_66_11_out),
-    .I1(Mux2xBits11_inst0_O),
-    .S(magma_Bits_3_eq_inst95_out),
+    .I1(Mux2xBits16_inst0_O[10:0]),
+    .S(magma_Bits_3_eq_inst116_out),
     .O(Mux2xBits11_inst1_O)
 );
 Mux2xBits11 Mux2xBits11_inst2 (
     .I0(Mux2xBits11_inst1_O),
-    .I1(const_66_11_out),
-    .S(magma_Bits_3_eq_inst74_out),
+    .I1(Mux2xBits11_inst0_O),
+    .S(magma_Bits_3_eq_inst95_out),
     .O(Mux2xBits11_inst2_O)
 );
 Mux2xBits11 Mux2xBits11_inst3 (
     .I0(Mux2xBits11_inst2_O),
     .I1(const_66_11_out),
-    .S(magma_Bits_3_eq_inst53_out),
+    .S(magma_Bits_3_eq_inst74_out),
     .O(Mux2xBits11_inst3_O)
 );
 Mux2xBits11 Mux2xBits11_inst4 (
     .I0(Mux2xBits11_inst3_O),
     .I1(const_66_11_out),
-    .S(magma_Bits_3_eq_inst32_out),
+    .S(magma_Bits_3_eq_inst53_out),
     .O(Mux2xBits11_inst4_O)
 );
 Mux2xBits11 Mux2xBits11_inst5 (
     .I0(Mux2xBits11_inst4_O),
     .I1(const_66_11_out),
-    .S(magma_Bits_3_eq_inst10_out),
+    .S(magma_Bits_3_eq_inst32_out),
     .O(Mux2xBits11_inst5_O)
+);
+Mux2xBits11 Mux2xBits11_inst6 (
+    .I0(Mux2xBits11_inst5_O),
+    .I1(const_66_11_out),
+    .S(magma_Bits_3_eq_inst10_out),
+    .O(Mux2xBits11_inst6_O)
 );
 Mux2xBits16 Mux2xBits16_inst0 (
     .I0(mem_addr_reg_O),
@@ -1335,7 +1346,7 @@ Mux2xBits16 Mux2xBits16_inst1 (
 );
 Mux2xBits16 Mux2xBits16_inst10 (
     .I0(Mux2xBits16_inst7_O),
-    .I1(const_10066_16_out),
+    .I1(const_4215_16_out),
     .S(magma_Bits_3_eq_inst53_out),
     .O(Mux2xBits16_inst10_O)
 );
@@ -1355,7 +1366,7 @@ Mux2xBits16 Mux2xBits16_inst12 (
 );
 Mux2xBits16 Mux2xBits16_inst13 (
     .I0(Mux2xBits16_inst10_O),
-    .I1(const_10066_16_out),
+    .I1(const_4198_16_out),
     .S(magma_Bits_3_eq_inst32_out),
     .O(Mux2xBits16_inst13_O)
 );
@@ -1379,7 +1390,7 @@ Mux2xBits16 Mux2xBits16_inst16 (
 );
 Mux2xBits16 Mux2xBits16_inst17 (
     .I0(Mux2xBits16_inst13_O),
-    .I1(const_10066_16_out),
+    .I1(const_4198_16_out),
     .S(magma_Bits_3_eq_inst10_out),
     .O(Mux2xBits16_inst17_O)
 );
@@ -1410,7 +1421,7 @@ Mux2xBits16 Mux2xBits16_inst20 (
     .O(Mux2xBits16_inst20_O)
 );
 Mux2xBits16 Mux2xBits16_inst3 (
-    .I0(const_10066_16_out),
+    .I0(const_4198_16_out),
     .I1(DataFromClient_O),
     .S(magma_Bits_1_eq_inst55_out),
     .O(Mux2xBits16_inst3_O)
@@ -1422,7 +1433,7 @@ Mux2xBits16 Mux2xBits16_inst4 (
     .O(Mux2xBits16_inst4_O)
 );
 Mux2xBits16 Mux2xBits16_inst5 (
-    .I0(const_10066_16_out),
+    .I0(const_4198_16_out),
     .I1(Mux2xBits16_inst3_O),
     .S(magma_Bits_3_eq_inst95_out),
     .O(Mux2xBits16_inst5_O)
@@ -1435,7 +1446,7 @@ Mux2xBits16 Mux2xBits16_inst6 (
 );
 Mux2xBits16 Mux2xBits16_inst7 (
     .I0(Mux2xBits16_inst5_O),
-    .I1(const_10066_16_out),
+    .I1(const_4198_16_out),
     .S(magma_Bits_3_eq_inst74_out),
     .O(Mux2xBits16_inst7_O)
 );
@@ -2843,22 +2854,86 @@ Mux2xBits3 Mux2xBits3_inst99 (
     .S(magma_Bits_1_eq_inst39_out),
     .O(Mux2xBits3_inst99_O)
 );
-Memory SRAM (
-    .RADDR(const_66_11_out),
-    .RDATA(SRAM_RDATA),
-    .CLK(CLK),
-    .WADDR(Mux2xBits11_inst5_O),
-    .WDATA(Mux2xBits16_inst17_O),
-    .WE(bit_const_1_None_out)
+Mux2xEnable Mux2xEnable_inst0 (
+    .I0(bit_const_1_None_out),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst116_out),
+    .O(Mux2xEnable_inst0_O)
+);
+Mux2xEnable Mux2xEnable_inst1 (
+    .I0(bit_const_1_None_out),
+    .I1(bit_const_0_None_out),
+    .S(magma_Bits_3_eq_inst116_out),
+    .O(Mux2xEnable_inst1_O)
+);
+Mux2xEnable Mux2xEnable_inst10 (
+    .I0(Mux2xEnable_inst8_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst10_out),
+    .O(Mux2xEnable_inst10_O)
+);
+Mux2xEnable Mux2xEnable_inst11 (
+    .I0(Mux2xEnable_inst9_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst10_out),
+    .O(Mux2xEnable_inst11_O)
+);
+Mux2xEnable Mux2xEnable_inst2 (
+    .I0(Mux2xEnable_inst0_O),
+    .I1(bit_const_0_None_out),
+    .S(magma_Bits_3_eq_inst95_out),
+    .O(Mux2xEnable_inst2_O)
+);
+Mux2xEnable Mux2xEnable_inst3 (
+    .I0(Mux2xEnable_inst1_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst95_out),
+    .O(Mux2xEnable_inst3_O)
+);
+Mux2xEnable Mux2xEnable_inst4 (
+    .I0(Mux2xEnable_inst2_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst74_out),
+    .O(Mux2xEnable_inst4_O)
+);
+Mux2xEnable Mux2xEnable_inst5 (
+    .I0(Mux2xEnable_inst3_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst74_out),
+    .O(Mux2xEnable_inst5_O)
+);
+Mux2xEnable Mux2xEnable_inst6 (
+    .I0(Mux2xEnable_inst4_O),
+    .I1(bit_const_0_None_out),
+    .S(magma_Bits_3_eq_inst53_out),
+    .O(Mux2xEnable_inst6_O)
+);
+Mux2xEnable Mux2xEnable_inst7 (
+    .I0(Mux2xEnable_inst5_O),
+    .I1(bit_const_0_None_out),
+    .S(magma_Bits_3_eq_inst53_out),
+    .O(Mux2xEnable_inst7_O)
+);
+Mux2xEnable Mux2xEnable_inst8 (
+    .I0(Mux2xEnable_inst6_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst32_out),
+    .O(Mux2xEnable_inst8_O)
+);
+Mux2xEnable Mux2xEnable_inst9 (
+    .I0(Mux2xEnable_inst7_O),
+    .I1(bit_const_1_None_out),
+    .S(magma_Bits_3_eq_inst32_out),
+    .O(Mux2xEnable_inst9_O)
 );
 SRAMSM SRAMSM_inst0 (
     .CEn(bit_const_0_None_out),
     .WDATA(Mux2xBits16_inst17_O),
-    .WEn(bit_const_1_None_out),
+    .WEn(Mux2xEnable_inst11_O),
     .RDATA(SRAMSM_inst0_RDATA),
-    .REn(bit_const_1_None_out),
+    .REn(Mux2xEnable_inst10_O),
     .CLK(CLK),
-    .ADDR(const_66_8_out),
+    .ADDR(Mux2xBits11_inst6_O),
     .deep_sleep(bit_const_0_None_out),
     .power_gate(bit_const_0_None_out),
     .wake_ack(SRAMSM_inst0_wake_ack),
@@ -2885,12 +2960,6 @@ coreir_const #(
     .width(3)
 ) const_0_3 (
     .out(const_0_3_out)
-);
-coreir_const #(
-    .value(16'h2752),
-    .width(16)
-) const_10066_16 (
-    .out(const_10066_16_out)
 );
 coreir_const #(
     .value(16'h000d),
@@ -2935,6 +3004,18 @@ coreir_const #(
     .out(const_3_3_out)
 );
 coreir_const #(
+    .value(16'h1066),
+    .width(16)
+) const_4198_16 (
+    .out(const_4198_16_out)
+);
+coreir_const #(
+    .value(16'h1077),
+    .width(16)
+) const_4215_16 (
+    .out(const_4215_16_out)
+);
+coreir_const #(
     .value(3'h4),
     .width(3)
 ) const_4_3 (
@@ -2951,12 +3032,6 @@ coreir_const #(
     .width(11)
 ) const_66_11 (
     .out(const_66_11_out)
-);
-coreir_const #(
-    .value(8'h42),
-    .width(8)
-) const_66_8 (
-    .out(const_66_8_out)
 );
 coreir_const #(
     .value(3'h6),

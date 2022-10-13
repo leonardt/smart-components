@@ -50,7 +50,7 @@ from mock_mem import SRAMRedundancyMixin
 from mock_mem import SRAMModalMixin
 from mock_mem import SRAM_FEATURE_TABLE
 
-ADDR_WIDTH = 8
+ADDR_WIDTH = 11
 DATA_WIDTH = 16
 
 # Choose a base
@@ -453,9 +453,9 @@ class StateMachine(CoopGenerator):
         )()
         self.mem_data_reg.name = "mem_data_reg"
 
-        # 2K SRAM memory, just like garnet :)
-        self.SRAM = m.Memory(2048, m.Bits[16])()
-        self.SRAM.name = "SRAM"
+        # # 2K SRAM memory, just like garnet :)
+        # self.SRAM = m.Memory(2048, m.Bits[16])()
+        # self.SRAM.name = "SRAM"
 
         # generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
         # self.MOCK = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)()
@@ -517,14 +517,21 @@ class StateMachine(CoopGenerator):
                 redundancy_data = 16  # changes when we enter meminit state
                 
                 # Seed SRAM with correct value for fault test; need SRAM[66] = 10066
-                SRAM_raddr = 66
-                SRAM_waddr = 66
-                SRAM_wdata = 10066
+                # SRAM_raddr = 66
+                # SRAM_waddr = 66
+                # SRAM_wdata = m.Bits[16](10066)
 
-                init_next = 0
+                MOCK_we = m.Enable(1)
+                MOCK_re = m.Enable(1)
+                MOCK_addr  = m.Bits[11](66)
+                MOCK_wdata = m.Bits[16](0x1066)
+
+                init_next = m.Bits[1](0)
 
             else:
                 addr_to_mem = cur_addr
+                # MOCK_addr  = m.Bits[11](88)
+                # SRAM_wdata = m.Bits[16](0x1088)
 
             self.initreg.I @= init_next
 
@@ -596,6 +603,11 @@ class StateMachine(CoopGenerator):
 
             elif info == Action.SendAck:
 
+                MOCK_we = m.Enable(0)
+                MOCK_re = m.Enable(0)
+                MOCK_wdata = m.Bits[16](0x1077)
+
+
                 # Setup
                 dtc_enable = ENABLE
                 data_to_client = m.bits(self.MOCK.wake_ack, 16)
@@ -618,6 +630,9 @@ class StateMachine(CoopGenerator):
             # State ReadAddr
             elif info == Action.GetAddr:
 
+                MOCK_we = m.Enable(1)
+                MOCK_re = m.Enable(1)
+
                 # Setup
                 dfc_enable         = ENABLE
                 addr_to_mem_enable = ENABLE
@@ -636,6 +651,10 @@ class StateMachine(CoopGenerator):
             # elif cur_state == State.WriteData:
             elif info == Action.WriteData:
 
+                MOCK_we = m.Enable(1)
+                MOCK_re = m.Enable(0)
+
+
                 # Get data from client, write it to SRAM
                 # If successful, go to state MemOn
 
@@ -652,8 +671,12 @@ class StateMachine(CoopGenerator):
 
                     # FIXME should probably turn WE on and off to prevent data shmearing
 
-                    SRAM_waddr = addr_to_mem[0:11]   # Address from prev step
-                    SRAM_wdata = dfc.data            # Data from client
+                    # SRAM_waddr = addr_to_mem[0:11]   # Address from prev step
+                    MOCK_addr  = addr_to_mem[0:11]   # Address from prev step
+                    # MOCK_addr  = m.Bits[11](69)
+
+                    # SRAM_wdata = dfc.data            # Data from client
+                    MOCK_wdata = dfc.data            # Data from client
                     ready_for_dfc = ~READY           # Not yet ready for next data
                     # next_state = State.MemOn
                     next_state = smg.state(cur_state)
@@ -663,12 +686,20 @@ class StateMachine(CoopGenerator):
             # elif cur_state == State.ReadData:
             elif info == Action.ReadData:
 
+                MOCK_we = m.Enable(0)
+                MOCK_re = m.Enable(1)
+
+
                 # Setup
                 dtc_enable = ENABLE
 
                 # data_to_client = 10066
                 # data_to_client = self.SRAM.RDATA
+                MOCK_addr = addr_to_mem[0:11]   # Address from prev step
+                # MOCK_addr = m.Bits[11](66)   # Address from prev step
+
                 data_to_client = self.MOCK.RDATA
+
                 dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
@@ -680,21 +711,21 @@ class StateMachine(CoopGenerator):
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
 
-            self.SRAM.RADDR @= SRAM_raddr
-            self.SRAM.WADDR @= SRAM_waddr
-            self.SRAM.WDATA @= SRAM_wdata
+            # self.SRAM.RADDR @= SRAM_raddr
+            # self.SRAM.WADDR @= SRAM_waddr
+            # self.SRAM.WDATA @= SRAM_wdata
 
-            self.MOCK.ADDR  @= SRAM_raddr
-            self.MOCK.WDATA @= SRAM_wdata
+            self.MOCK.ADDR  @= MOCK_addr
+            self.MOCK.WDATA @= MOCK_wdata
 
             # CEn is active low :(
             # REn and WEn are both active high :(
             self.MOCK.CEn   @= m.Enable(0)
-            self.MOCK.WEn   @= m.Enable(1)
-            self.MOCK.REn   @= m.Enable(1)
+            self.MOCK.WEn   @= MOCK_we
+            self.MOCK.REn   @= MOCK_re
 
 
-            self.SRAM.WE @= 1
+            # self.SRAM.WE @= 1
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
@@ -740,7 +771,7 @@ def show_verilog():
 #==============================================================================
 
 import fault
-DBG9 = False
+DBG9 = True
 def test_state_machine_fault():
     
     debug("Build and test state machine")
@@ -831,6 +862,7 @@ def test_state_machine_fault():
 
 
     def get_and_check_dtc_data(dval):
+        cycle()
         READY=1; VALID=1
 
         # We expect that sender has valid data
@@ -849,7 +881,7 @@ def test_state_machine_fault():
 
         # See what we got / check latched data for correctness
         reg = tester.circuit.DataToClient
-        msg = f"MC sent us data '%d' ==? {dval} (0x{dval:x})"
+        msg = f"MC sent us data '%x' ==? {dval} (0x{dval:x})"
         prlog9(f"{msg}\n",  reg.O)
         reg.O.expect(dval)
         prlog9(f"...yes! passed data check\n")
@@ -938,7 +970,7 @@ def test_state_machine_fault():
     # FIXME consider making this a method/function/subroutine or whatever tf
     ########################################################################
     prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 787\n")
+    prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 944\n")
     check_transition(Command.PowerOn, State.SendAck)
     prlog9("successfully arrived in state SendAck\n")
     ########################################################################
@@ -983,9 +1015,10 @@ def test_state_machine_fault():
     prlog9("successfully arrived in state ReadAddr\n")
 
     ########################################################################
+    # Should break if you change below line to e.g. 'maddr=17'
     maddr = 66
     prlog9("-----------------------------------------------\n")
-    prlog0(f"Check that MC received mem addr '{maddr}'\n")
+    prlog0(f"1021 Check that MC received mem addr '{maddr}'\n")
 
     # Send mem_addr data, after which state should proceed to MemOff
     send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
@@ -996,10 +1029,14 @@ def test_state_machine_fault():
     tester.circuit.current_state.expect(State.ReadData)
     prlog9("...CORRECT!\n")
 
+    # cycle() # NECESSARY!!! => put it in get_and_check...
+
+
     ########################################################################
-    wantdata = 10066
+    # wantdata = 10066
+    wantdata = 0x1066
     prlog9("-----------------------------------------------\n")
-    prlog0(f"Check that MC sent data '{wantdata}'\n")
+    prlog0(f"Check that MC sent data '{wantdata:x}'\n")
     get_and_check_dtc_data(wantdata)
     cycle()
 
@@ -1016,6 +1053,8 @@ def test_state_machine_fault():
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
 
+    ########################################################################
+    ########################################################################
     ########################################################################
     prlog0("-----------------------------------------------\n")
     prlog0("Check transition MemOn => WriteAddr on command Write\n")
@@ -1035,7 +1074,7 @@ def test_state_machine_fault():
     prlog9("...CORRECT!\n")
 
     ########################################################################
-    data = 10088
+    data = 0x1088
     prlog9(f"-----------------------------------------------\n")
     prlog0(f"Send data '{data}' to MC and verify receipt\n")
     send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
@@ -1045,18 +1084,98 @@ def test_state_machine_fault():
     prlog0("Verify arrival in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
+    ########################################################################
+    ########################################################################
+    ########################################################################
 
+    ########################################################################
+    ########################################################################
+    ########################################################################
     prlog0("-----------------------------------------------\n")
-    prlog0("Final check SRAM[88] == 10088 ?\n")
-    tester.circuit.SRAM.RADDR = 88
-    cycle()
-    tester.circuit.SRAM.RDATA.expect(10088)
+    prlog0("Check transition MemOn => WriteAddr on command Write 1096\n")
+    check_transition(Command.Write, State.WriteAddr)
+    prlog9("successfully arrived in state WriteAddr\n")
+
+    ########################################################################
+    maddr = 88     # Set this to e.g. 87 to make it break below...
+    prlog9(f"-----------------------------------------------\n")
+    prlog0(f"Check that MC received mem addr '{maddr}'\n")
+    send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
+
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    prlog0("Verify arrival in state WriteData\n")
+    tester.circuit.current_state.expect(State.WriteData)
+    prlog9("...CORRECT!\n")
+
+    ########################################################################
+    data = 0x1088
+    prlog9(f"-----------------------------------------------\n")
+    prlog0(f"Send data '{data}' to MC and verify receipt\n")
+    send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
+
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    prlog0("Verify arrival in state MemOn\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    prlog9("...CORRECT!\n")
+    ########################################################################
+    ########################################################################
+    ########################################################################
+
+
+
+
+ #     prlog0("-----------------------------------------------\n")
+#     prlog0("Final check SRAM[88] == 10088 ?\n")
+#     tester.circuit.SRAM.RADDR = 88
+#     cycle()
+#     tester.circuit.SRAM.RDATA.expect(10088)
 
     #------------------------------------------------------------------------
     # BOOKMARK
     # prlog0("GOOOOOD to here\n")
     # tester.circuit.current_state.expect(13)
     #------------------------------------------------------------------------
+
+    ########################################################################
+    prlog0("-----------------------------------------------\n")
+    prlog0("Check transition MemOn => ReadAddr on command Read 1066\n")
+    check_transition(Command.Read, State.ReadAddr)
+    prlog9("successfully arrived in state ReadAddr\n")
+
+    ########################################################################
+    maddr = 88
+    prlog9("-----------------------------------------------\n")
+    prlog0(f"Check that MC received mem addr '{maddr}'\n")
+
+    # Send mem_addr data, after which state should proceed to MemOff
+    send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
+        
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    prlog0("Verify arrival in state ReadData\n")
+    tester.circuit.current_state.expect(State.ReadData)
+    prlog9("...CORRECT!\n")
+
+    ########################################################################
+    wantdata = 0x1088
+    prlog9("-----------------------------------------------\n")
+    prlog0(f"Check that MC sent data '{wantdata:x}'\n")
+    get_and_check_dtc_data(wantdata)
+    cycle()
+
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    prlog0("Verify arrival in state MemOn\n")
+    tester.circuit.current_state.expect(State.MemOn)
+    prlog9("...CORRECT!\n")
+    cycle()
+
+
+
+
+
 
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
