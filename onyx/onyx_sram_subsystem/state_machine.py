@@ -39,6 +39,34 @@ import hwtypes as hw
 # from util import inverse_look_up, BiMap
 debug("* Done importing python packages...")
 
+from mock_mem import SRAMSingle
+from mock_mem import SRAMDouble
+from mock_mem import SRAMRedundancyMixin
+from mock_mem import SRAMModalMixin
+from mock_mem import SRAM_FEATURE_TABLE
+
+ADDR_WIDTH = 8
+DATA_WIDTH = 16
+
+# Choose a base
+base = SRAMDouble
+base = SRAMSingle
+
+# Choose a "mixin"
+mixins = (SRAMRedundancyMixin, )
+mixins = (SRAMModalMixin,SRAMRedundancyMixin, )
+mixins = (SRAMModalMixin, )
+
+# If mode includes redundancy, will need to choose one of these two parameters
+if SRAMRedundancyMixin in mixins:
+    params = { 'num_r_cols': 1 }
+    params = { 'num_r_cols': 2 }
+else:
+    params = {}
+
+
+
+
 #------------------------------------------------------------------------
 # Dummy value for now
 WakeAckT       = m.Bits[16](1)
@@ -424,6 +452,9 @@ class StateMachine(CoopGenerator):
         self.SRAM = m.Memory(2048, m.Bits[16])()
         self.SRAM.name = "SRAM"
 
+        generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
+        self.MOCK = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)()
+
         # Formerly used registers o_reg, r_reg, and s_reg for IO.
         # Now, instead of registers, have ready/valid message
         # queues CommandFromClient, DataFromClient, DataToClient
@@ -624,7 +655,8 @@ class StateMachine(CoopGenerator):
                 dtc_enable = ENABLE
 
                 # data_to_client = 10066
-                data_to_client = self.SRAM.RDATA
+                # data_to_client = self.SRAM.RDATA
+                data_to_client = self.MOCK.RDATA
                 dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
