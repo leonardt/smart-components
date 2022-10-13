@@ -16,29 +16,17 @@ DATA_WIDTH = 8
 
 
 @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
+
+# Trailing commas in mixin parm tuples are *required* or it breaks...
 @pytest.mark.parametrize(
-    'mixins, params', [
-        ((), {}),
-        ((SRAMModalMixin, ), {}),
-        ((SRAMRedundancyMixin, ), {
-            'num_r_cols': 1
-        }),
-        ((SRAMRedundancyMixin, ), {
-            'num_r_cols': 2
-        }),
-        ((
-            SRAMModalMixin,
-            SRAMRedundancyMixin,
-        ), {
-            'num_r_cols': 1
-        }),
-        ((
-            SRAMModalMixin,
-            SRAMRedundancyMixin,
-        ), {
-            'num_r_cols': 2
-        }),
-    ]
+    'mixins,                                  params',      [
+    ((),                                      {}),
+    ((SRAMModalMixin, ),                      {}),
+    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 1 }),
+    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 2 }),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 1 }),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 2 }),
+  ]
 )
 def test_sram(base, mixins, params):
     generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
@@ -47,24 +35,29 @@ def test_sram(base, mixins, params):
 
     if SRAMModalMixin in mixins:
         State = Definition.State
+
+        # Stay asleep with power OFF => no wakeup
         tester.circuit.deep_sleep = hw.Bit(1)
         tester.circuit.power_gate = hw.Bit(1)
         tester.eval()
         tester.circuit.current_state.expect(State.DeepSleep)
         tester.circuit.wake_ack.expect(hw.Bit(0))
 
+        # Wake up! But power still off => no wakeup
         tester.circuit.deep_sleep = hw.Bit(0)
         tester.circuit.power_gate = hw.Bit(1)
         tester.eval()
         tester.circuit.current_state.expect(State.TotalRetention)
         tester.circuit.wake_ack.expect(hw.Bit(0))
 
+        # Go to sleep, but turn on power => no wakeup
         tester.circuit.deep_sleep = hw.Bit(1)
         tester.circuit.power_gate = hw.Bit(0)
         tester.eval()
         tester.circuit.current_state.expect(State.Retention)
         tester.circuit.wake_ack.expect(hw.Bit(0))
 
+        # Wake up! Turn on power! => Finally we're awake maybe.
         tester.circuit.deep_sleep = hw.Bit(0)
         tester.circuit.power_gate = hw.Bit(0)
         tester.eval()
@@ -81,6 +74,7 @@ def test_sram(base, mixins, params):
                 hw.BitVector[Definition.redundancy_addr_t.size](i)
             )
 
+    # For i = 0 to MAX_ADDR, write i => SRAM[i]
     for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(0)
@@ -94,6 +88,7 @@ def test_sram(base, mixins, params):
         tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](i)
         tester.step(2)
 
+    # For i = 0 to MAX_ADDR, read SRAM[i] =? i
     for i in range(1 << ADDR_WIDTH):
         tester.circuit.CEn = hw.Bit(0)
         tester.circuit.REn = hw.Bit(1)

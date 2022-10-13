@@ -20,11 +20,11 @@ beep/g'
     diff ref/StateMachine.v tmpdir/StateMachine.v && echo PASS || echo FAIL
 '''
 ########################################################################
+# FIXME can use logger
 DBG=True
 if DBG:
-    import sys
     def debug(m):
-        print(m); sys.stdout.flush()
+        print(m, flush=True)
 else:
     def debug(m): pass
 
@@ -32,11 +32,11 @@ else:
 debug("Begin importing python packages...")
 import sys
 import magma as m
-import hwtypes as ht
-from mock_mem import SRAMDMR
-from session import Offer, Choose, Send, Recieve, Sequence
-from session import SessionTypeVisitor, SessionT, LabelT
-from util import inverse_look_up, BiMap
+import hwtypes as hw
+# from mock_mem import SRAMDMR
+# from session import Offer, Choose, Send, Recieve, Sequence
+# from session import SessionTypeVisitor, SessionT, LabelT
+# from util import inverse_look_up, BiMap
 debug("* Done importing python packages...")
 
 #------------------------------------------------------------------------
@@ -57,6 +57,16 @@ class CoopGenerator(m.Generator2):
 
     def _decl_components(self, **kwargs): pass
     def _connect(self, **kwargs): pass
+
+# FIXME can use enum
+
+# >>> from enum import Enum
+# >>> class foo(Enum):
+# >>> class foo(Enum):
+# ...   e1=m.Bits[1](1)
+# ... 
+# >>> foo.e1
+# <foo.e1: Bits[1](1)>
 
 class Command():
     #----------------------------------
@@ -100,18 +110,22 @@ class State():
 
 ACTION  = m.Bits[1](0)
 COMMAND = m.Bits[1](1)
+
 mygraph = (
-    (State.MemInit,  ACTION,  Action.GetRedundancy, State.MemOff),
-    (State.MemOff,   COMMAND, Command.PowerOn,      State.SendAck),
-    (State.MemOn,     COMMAND, Command.PowerOff,    State.MemOff),
-    (State.MemOn,     COMMAND, Command.Read,        State.ReadAddr),
-    (State.MemOn,     COMMAND, Command.Write,       State.WriteAddr),
-    (State.SendAck,   ACTION,  Action.SendAck,      State.MemOn),
-    (State.ReadAddr,  ACTION,  Action.GetAddr,      State.ReadData),
-    (State.WriteAddr, ACTION,  Action.GetAddr,      State.WriteData),
-    (State.WriteData, ACTION,  Action.WriteData,    State.MemOn),
-    (State.ReadData,  ACTION,  Action.ReadData,     State.MemOn),
+    (State.MemInit,   ACTION,  Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    COMMAND, Command.PowerOn,      State.SendAck),
+    (State.MemOn,     COMMAND, Command.PowerOff,     State.MemOff),
+    (State.MemOn,     COMMAND, Command.Read,         State.ReadAddr),
+    (State.MemOn,     COMMAND, Command.Write,        State.WriteAddr),
+    (State.SendAck,   ACTION,  Action.SendAck,       State.MemOn),
+    (State.ReadAddr,  ACTION,  Action.GetAddr,       State.ReadData),
+    (State.WriteAddr, ACTION,  Action.GetAddr,       State.WriteData),
+    (State.WriteData, ACTION,  Action.WriteData,     State.MemOn),
+    (State.ReadData,  ACTION,  Action.ReadData,      State.MemOn),
 )
+
+##############################################################################
+# begin side quest
 
 mygraph_string = '''
     (State.MemInit,  ACTION,  Action.GetRedundancy, State.MemOff),
@@ -156,6 +170,9 @@ def build_dot_graph(graph):
         print(f'  {quote(from_state):11} -> {quote(to_state):11} [label={quote(label)}];')
     print('}\n')
 
+# end side quest
+##############################################################################
+
 
 # To test/break, can replace e.g.
 # <   (State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
@@ -163,10 +180,10 @@ def build_dot_graph(graph):
 
 
 class StateMachineGraph():
-    def __init__(self, *args):
-        self.graph = []
-        for a in args: self.graph.append(a)
-        
+    # FIXME use 
+    def __init__(self, graph):
+        self.graph = list(graph)
+
     def curstate  (self, edge): return edge[0]
     def actype    (self, edge): return edge[1]
     def acdata    (self, edge): return edge[2]
@@ -201,7 +218,7 @@ class StateMachineGraph():
 
     # FIXME/TODO def dot() etc.
 
-smg = StateMachineGraph(*mygraph)
+smg = StateMachineGraph(mygraph)
 
 
 ########################################################################
