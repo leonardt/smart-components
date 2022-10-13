@@ -112,6 +112,14 @@ module corebit_const #(
   assign out = value;
 endmodule
 
+module corebit_and (
+    input in0/*verilator public*/,
+    input in1/*verilator public*/,
+    output out/*verilator public*/
+);
+  assign out = in0 & in1;
+endmodule
+
 module commonlib_muxn__N2__width3 (
     input [2:0] in_data [1:0]/*verilator public*/,
     input [0:0] in_sel/*verilator public*/,
@@ -180,7 +188,7 @@ coreir_mux #(
 assign out = _join_out;
 endmodule
 
-module Register_unq4 (
+module Register_unq5 (
     input [0:0] I/*verilator public*/,
     output [0:0] O/*verilator public*/,
     input CLK/*verilator public*/
@@ -196,6 +204,24 @@ coreir_reg #(
     .out(reg_P1_inst0_out)
 );
 assign O = reg_P1_inst0_out;
+endmodule
+
+module Register_unq3 (
+    input I/*verilator public*/,
+    output O/*verilator public*/,
+    input CLK/*verilator public*/
+);
+wire [0:0] reg_P1_inst0_out;
+coreir_reg #(
+    .clk_posedge(1'b1),
+    .init(1'h0),
+    .width(1)
+) reg_P1_inst0 (
+    .clk(CLK),
+    .in(I),
+    .out(reg_P1_inst0_out)
+);
+assign O = reg_P1_inst0_out[0];
 endmodule
 
 module Register_unq1 (
@@ -252,7 +278,7 @@ commonlib_muxn__N2__width3 coreir_commonlib_mux2x3_inst0 (
 assign O = coreir_commonlib_mux2x3_inst0_out;
 endmodule
 
-module Register_unq3 (
+module Register_unq4 (
     input [2:0] I/*verilator public*/,
     output [2:0] O/*verilator public*/,
     input CE/*verilator public*/,
@@ -374,6 +400,164 @@ commonlib_muxn__N2__width1 coreir_commonlib_mux2x1_inst0 (
     .out(coreir_commonlib_mux2x1_inst0_out)
 );
 assign O = coreir_commonlib_mux2x1_inst0_out[0];
+endmodule
+
+module Memory_unq1 (
+    input [7:0] RADDR/*verilator public*/,
+    output [15:0] RDATA/*verilator public*/,
+    input CLK/*verilator public*/,
+    input [7:0] WADDR/*verilator public*/,
+    input [15:0] WDATA/*verilator public*/,
+    input WE/*verilator public*/
+);
+wire [15:0] coreir_mem256x16_inst0_rdata;
+coreir_mem #(
+    .depth(256),
+    .has_init(1'b0),
+    .sync_read(1'b0),
+    .width(16)
+) coreir_mem256x16_inst0 (
+    .clk(CLK),
+    .wdata(WDATA),
+    .waddr(WADDR),
+    .wen(WE),
+    .rdata(coreir_mem256x16_inst0_rdata),
+    .raddr(RADDR)
+);
+assign RDATA = coreir_mem256x16_inst0_rdata;
+endmodule
+
+module SRAMSM (
+    input CEn/*verilator public*/,
+    input [15:0] WDATA/*verilator public*/,
+    input WEn/*verilator public*/,
+    output [15:0] RDATA/*verilator public*/,
+    input REn/*verilator public*/,
+    input CLK/*verilator public*/,
+    input [7:0] ADDR/*verilator public*/,
+    input deep_sleep/*verilator public*/,
+    input power_gate/*verilator public*/,
+    output wake_ack/*verilator public*/,
+    output [1:0] current_state/*verilator public*/
+);
+wire [15:0] Memory_inst0_RDATA;
+wire [15:0] Register_inst0_O;
+wire Register_inst1_O;
+wire [1:0] const_0_2_out;
+wire magma_Bit_and_inst0_out;
+wire magma_Bit_and_inst1_out;
+wire magma_Bit_and_inst2_out;
+wire magma_Bit_and_inst3_out;
+wire magma_Bit_and_inst4_out;
+wire magma_Bit_and_inst5_out;
+wire magma_Bit_not_inst0_out;
+wire magma_Bit_not_inst1_out;
+wire magma_Bits_2_eq_inst0_out;
+wire magma_Bits_2_eq_inst1_out;
+wire magma_Bits_2_eq_inst2_out;
+wire magma_Bits_2_eq_inst3_out;
+Memory_unq1 Memory_inst0 (
+    .RADDR(ADDR),
+    .RDATA(Memory_inst0_RDATA),
+    .CLK(CLK),
+    .WADDR(ADDR),
+    .WDATA(WDATA),
+    .WE(magma_Bit_and_inst5_out)
+);
+Register_unq2 Register_inst0 (
+    .I(Memory_inst0_RDATA),
+    .O(Register_inst0_O),
+    .CE(magma_Bit_and_inst2_out),
+    .CLK(CLK)
+);
+Register_unq3 Register_inst1 (
+    .I(magma_Bits_2_eq_inst3_out),
+    .O(Register_inst1_O),
+    .CLK(CLK)
+);
+coreir_const #(
+    .value(2'h0),
+    .width(2)
+) const_0_2 (
+    .out(const_0_2_out)
+);
+corebit_and magma_Bit_and_inst0 (
+    .in0(magma_Bit_not_inst0_out),
+    .in1(magma_Bits_2_eq_inst0_out),
+    .out(magma_Bit_and_inst0_out)
+);
+corebit_and magma_Bit_and_inst1 (
+    .in0(magma_Bit_and_inst0_out),
+    .in1(Register_inst1_O),
+    .out(magma_Bit_and_inst1_out)
+);
+corebit_and magma_Bit_and_inst2 (
+    .in0(magma_Bit_and_inst1_out),
+    .in1(REn),
+    .out(magma_Bit_and_inst2_out)
+);
+corebit_and magma_Bit_and_inst3 (
+    .in0(magma_Bit_not_inst1_out),
+    .in1(magma_Bits_2_eq_inst1_out),
+    .out(magma_Bit_and_inst3_out)
+);
+corebit_and magma_Bit_and_inst4 (
+    .in0(magma_Bit_and_inst3_out),
+    .in1(Register_inst1_O),
+    .out(magma_Bit_and_inst4_out)
+);
+corebit_and magma_Bit_and_inst5 (
+    .in0(magma_Bit_and_inst4_out),
+    .in1(WEn),
+    .out(magma_Bit_and_inst5_out)
+);
+corebit_not magma_Bit_not_inst0 (
+    .in(CEn),
+    .out(magma_Bit_not_inst0_out)
+);
+corebit_not magma_Bit_not_inst1 (
+    .in(CEn),
+    .out(magma_Bit_not_inst1_out)
+);
+wire [1:0] magma_Bits_2_eq_inst0_in0;
+assign magma_Bits_2_eq_inst0_in0 = {power_gate,deep_sleep};
+coreir_eq #(
+    .width(2)
+) magma_Bits_2_eq_inst0 (
+    .in0(magma_Bits_2_eq_inst0_in0),
+    .in1(const_0_2_out),
+    .out(magma_Bits_2_eq_inst0_out)
+);
+wire [1:0] magma_Bits_2_eq_inst1_in0;
+assign magma_Bits_2_eq_inst1_in0 = {power_gate,deep_sleep};
+coreir_eq #(
+    .width(2)
+) magma_Bits_2_eq_inst1 (
+    .in0(magma_Bits_2_eq_inst1_in0),
+    .in1(const_0_2_out),
+    .out(magma_Bits_2_eq_inst1_out)
+);
+wire [1:0] magma_Bits_2_eq_inst2_in0;
+assign magma_Bits_2_eq_inst2_in0 = {power_gate,deep_sleep};
+coreir_eq #(
+    .width(2)
+) magma_Bits_2_eq_inst2 (
+    .in0(magma_Bits_2_eq_inst2_in0),
+    .in1(const_0_2_out),
+    .out(magma_Bits_2_eq_inst2_out)
+);
+wire [1:0] magma_Bits_2_eq_inst3_in0;
+assign magma_Bits_2_eq_inst3_in0 = {power_gate,deep_sleep};
+coreir_eq #(
+    .width(2)
+) magma_Bits_2_eq_inst3 (
+    .in0(magma_Bits_2_eq_inst3_in0),
+    .in1(const_0_2_out),
+    .out(magma_Bits_2_eq_inst3_out)
+);
+assign RDATA = Register_inst0_O;
+assign wake_ack = magma_Bits_2_eq_inst2_out;
+assign current_state = {power_gate,deep_sleep};
 endmodule
 
 module Memory (
@@ -700,25 +884,29 @@ wire [2:0] Mux2xBits3_inst97_O;
 wire [2:0] Mux2xBits3_inst98_O;
 wire [2:0] Mux2xBits3_inst99_O;
 wire [15:0] SRAM_RDATA;
+wire [15:0] SRAMSM_inst0_RDATA;
+wire SRAMSM_inst0_wake_ack;
+wire [1:0] SRAMSM_inst0_current_state;
+wire bit_const_0_None_out;
 wire bit_const_1_None_out;
 wire [0:0] const_0_1_out;
 wire [2:0] const_0_3_out;
 wire [15:0] const_10066_16_out;
-wire [10:0] const_13_11_out;
 wire [15:0] const_13_16_out;
 wire [15:0] const_15_16_out;
 wire [15:0] const_16_16_out;
 wire [0:0] const_1_1_out;
-wire [15:0] const_1_16_out;
 wire [2:0] const_1_3_out;
 wire [2:0] const_2_3_out;
 wire [2:0] const_3_3_out;
 wire [2:0] const_4_3_out;
 wire [2:0] const_5_3_out;
 wire [10:0] const_66_11_out;
+wire [7:0] const_66_8_out;
 wire [2:0] const_6_3_out;
 wire [2:0] const_7_3_out;
 wire [0:0] initreg_O;
+wire magma_Bit_and_inst0_out;
 wire magma_Bit_not_inst0_out;
 wire magma_Bits_1_eq_inst0_out;
 wire magma_Bits_1_eq_inst1_out;
@@ -947,18 +1135,18 @@ wire [15:0] mem_addr_reg_O;
 wire [15:0] mem_data_reg_O;
 wire [15:0] redundancy_reg_O;
 wire [2:0] state_reg_O;
-Register_unq3 CommandFromClient (
+Register_unq4 CommandFromClient (
     .I(offer),
     .O(CommandFromClient_O),
     .CE(Mux2xBit_inst14_O),
     .CLK(CLK)
 );
-Register_unq4 CommandFromClient_ready (
+Register_unq5 CommandFromClient_ready (
     .I(Mux2xBits1_inst17_O),
     .O(CommandFromClient_ready_O),
     .CLK(CLK)
 );
-Register_unq4 CommandFromClient_valid (
+Register_unq5 CommandFromClient_valid (
     .I(offer_valid),
     .O(CommandFromClient_valid_O),
     .CLK(CLK)
@@ -969,12 +1157,12 @@ Register_unq2 DataFromClient (
     .CE(Mux2xBit_inst10_O),
     .CLK(CLK)
 );
-Register_unq4 DataFromClient_ready (
+Register_unq5 DataFromClient_ready (
     .I(Mux2xBits1_inst18_O),
     .O(DataFromClient_ready_O),
     .CLK(CLK)
 );
-Register_unq4 DataFromClient_valid (
+Register_unq5 DataFromClient_valid (
     .I(receive_valid),
     .O(DataFromClient_valid_O),
     .CLK(CLK)
@@ -985,12 +1173,12 @@ Register_unq2 DataToClient (
     .CE(Mux2xBit_inst15_O),
     .CLK(CLK)
 );
-Register_unq4 DataToClient_ready (
+Register_unq5 DataToClient_ready (
     .I(send_ready),
     .O(DataToClient_ready_O),
     .CLK(CLK)
 );
-Register_unq4 DataToClient_valid (
+Register_unq5 DataToClient_valid (
     .I(Mux2xBits1_inst16_O),
     .O(DataToClient_valid_O),
     .CLK(CLK)
@@ -998,7 +1186,7 @@ Register_unq4 DataToClient_valid (
 Mux2xBit Mux2xBit_inst0 (
     .I0(bit_const_1_None_out),
     .I1(bit_const_1_None_out),
-    .S(magma_Bits_1_eq_inst33_out),
+    .S(magma_Bit_and_inst0_out),
     .O(Mux2xBit_inst0_O)
 );
 Mux2xBit Mux2xBit_inst1 (
@@ -1157,9 +1345,11 @@ Mux2xBits16 Mux2xBits16_inst11 (
     .S(magma_Bits_3_eq_inst53_out),
     .O(Mux2xBits16_inst11_O)
 );
+wire [15:0] Mux2xBits16_inst12_I1;
+assign Mux2xBits16_inst12_I1 = {bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,bit_const_0_None_out,SRAMSM_inst0_wake_ack};
 Mux2xBits16 Mux2xBits16_inst12 (
     .I0(Mux2xBits16_inst9_O),
-    .I1(const_1_16_out),
+    .I1(Mux2xBits16_inst12_I1),
     .S(magma_Bits_3_eq_inst53_out),
     .O(Mux2xBits16_inst12_O)
 );
@@ -1227,7 +1417,7 @@ Mux2xBits16 Mux2xBits16_inst3 (
 );
 Mux2xBits16 Mux2xBits16_inst4 (
     .I0(const_15_16_out),
-    .I1(SRAM_RDATA),
+    .I1(SRAMSM_inst0_RDATA),
     .S(magma_Bits_3_eq_inst116_out),
     .O(Mux2xBits16_inst4_O)
 );
@@ -1336,7 +1526,7 @@ Mux2xBits1 Mux2xBits1_inst2 (
 Mux2xBits1 Mux2xBits1_inst3 (
     .I0(const_1_1_out),
     .I1(magma_Bits_1_not_inst5_out),
-    .S(magma_Bits_1_eq_inst33_out),
+    .S(magma_Bit_and_inst0_out),
     .O(Mux2xBits1_inst3_O)
 );
 Mux2xBits1 Mux2xBits1_inst4 (
@@ -1480,7 +1670,7 @@ Mux2xBits3 Mux2xBits3_inst112 (
 Mux2xBits3 Mux2xBits3_inst113 (
     .I0(state_reg_O),
     .I1(Mux2xBits3_inst112_O),
-    .S(magma_Bits_1_eq_inst33_out),
+    .S(magma_Bit_and_inst0_out),
     .O(Mux2xBits3_inst113_O)
 );
 Mux2xBits3 Mux2xBits3_inst114 (
@@ -2654,12 +2844,30 @@ Mux2xBits3 Mux2xBits3_inst99 (
     .O(Mux2xBits3_inst99_O)
 );
 Memory SRAM (
-    .RADDR(const_13_11_out),
+    .RADDR(const_66_11_out),
     .RDATA(SRAM_RDATA),
     .CLK(CLK),
     .WADDR(Mux2xBits11_inst5_O),
     .WDATA(Mux2xBits16_inst17_O),
     .WE(bit_const_1_None_out)
+);
+SRAMSM SRAMSM_inst0 (
+    .CEn(bit_const_0_None_out),
+    .WDATA(Mux2xBits16_inst17_O),
+    .WEn(bit_const_1_None_out),
+    .RDATA(SRAMSM_inst0_RDATA),
+    .REn(bit_const_1_None_out),
+    .CLK(CLK),
+    .ADDR(const_66_8_out),
+    .deep_sleep(bit_const_0_None_out),
+    .power_gate(bit_const_0_None_out),
+    .wake_ack(SRAMSM_inst0_wake_ack),
+    .current_state(SRAMSM_inst0_current_state)
+);
+corebit_const #(
+    .value(1'b0)
+) bit_const_0_None (
+    .out(bit_const_0_None_out)
 );
 corebit_const #(
     .value(1'b1)
@@ -2685,12 +2893,6 @@ coreir_const #(
     .out(const_10066_16_out)
 );
 coreir_const #(
-    .value(11'h00d),
-    .width(11)
-) const_13_11 (
-    .out(const_13_11_out)
-);
-coreir_const #(
     .value(16'h000d),
     .width(16)
 ) const_13_16 (
@@ -2713,12 +2915,6 @@ coreir_const #(
     .width(1)
 ) const_1_1 (
     .out(const_1_1_out)
-);
-coreir_const #(
-    .value(16'h0001),
-    .width(16)
-) const_1_16 (
-    .out(const_1_16_out)
 );
 coreir_const #(
     .value(3'h1),
@@ -2757,6 +2953,12 @@ coreir_const #(
     .out(const_66_11_out)
 );
 coreir_const #(
+    .value(8'h42),
+    .width(8)
+) const_66_8 (
+    .out(const_66_8_out)
+);
+coreir_const #(
     .value(3'h6),
     .width(3)
 ) const_6_3 (
@@ -2772,6 +2974,11 @@ Register_unq1 initreg (
     .I(const_0_1_out),
     .O(initreg_O),
     .CLK(CLK)
+);
+corebit_and magma_Bit_and_inst0 (
+    .in0(magma_Bits_1_eq_inst33_out),
+    .in1(SRAMSM_inst0_wake_ack),
+    .out(magma_Bit_and_inst0_out)
 );
 corebit_not magma_Bit_not_inst0 (
     .in(magma_Bits_3_eq_inst31_out),

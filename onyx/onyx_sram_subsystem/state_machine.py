@@ -34,10 +34,15 @@ import sys
 import magma as m
 import hwtypes as hw
 # from mock_mem import SRAMDMR
+# from mock_mem import SRAMDMR
 # from session import Offer, Choose, Send, Recieve, Sequence
 # from session import SessionTypeVisitor, SessionT, LabelT
 # from util import inverse_look_up, BiMap
 debug("* Done importing python packages...")
+
+from mock_mem import SRAMSM
+from mock_mem import SRAMBase
+
 
 from mock_mem import SRAMSingle
 from mock_mem import SRAMDouble
@@ -452,8 +457,11 @@ class StateMachine(CoopGenerator):
         self.SRAM = m.Memory(2048, m.Bits[16])()
         self.SRAM.name = "SRAM"
 
-        generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
-        self.MOCK = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)()
+        # generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
+        # self.MOCK = generator(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)()
+
+        self.MOCK = SRAMSM(ADDR_WIDTH, DATA_WIDTH, debug=True, **params)()
+
 
         # Formerly used registers o_reg, r_reg, and s_reg for IO.
         # Now, instead of registers, have ready/valid message
@@ -509,7 +517,7 @@ class StateMachine(CoopGenerator):
                 redundancy_data = 16  # changes when we enter meminit state
                 
                 # Seed SRAM with correct value for fault test; need SRAM[66] = 10066
-                SRAM_raddr = 13
+                SRAM_raddr = 66
                 SRAM_waddr = 66
                 SRAM_wdata = 10066
 
@@ -590,22 +598,39 @@ class StateMachine(CoopGenerator):
 
                 # Setup
                 dtc_enable = ENABLE
-
-                # data_to_client = WakeAckT
-                # data_to_client = m.Bits[16](m.Bit(1))
-                data_to_client = m.Bits[16](self.MOCK.wake_ack)
-
-                # data_to_client = WakeAckT
+                data_to_client = m.bits(self.MOCK.wake_ack, 16)
                 dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
-                if dtc.is_ready():
+                if dtc.is_ready() & self.MOCK.wake_ack:
                     # next_state = State.MemOn
                     next_state = smg.state(cur_state)
 
                     # Reset
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
+ 
+
+
+            # State MemOn: GONE!!! See far below for old State MemOn
+
+
+            # State ReadAddr
+            elif info == Action.GetAddr:
+
+                # Setup
+                dfc_enable         = ENABLE
+                addr_to_mem_enable = ENABLE
+
+                # Get read-address info from client/testbench
+                # If successful, go to state ReadData
+
+                ready_for_dfc = READY        # Ready for new data
+                if dfc.is_valid():
+                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
+                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    next_state = smg.state(cur_state)
+
 
             # State WriteData is similar to ReadAddr/WriteAddr
             # elif cur_state == State.WriteData:
@@ -662,7 +687,9 @@ class StateMachine(CoopGenerator):
             self.MOCK.ADDR  @= SRAM_raddr
             self.MOCK.WDATA @= SRAM_wdata
 
-            self.MOCK.CEn   @= m.Enable(1)
+            # CEn is active low :(
+            # REn and WEn are both active high :(
+            self.MOCK.CEn   @= m.Enable(0)
             self.MOCK.WEn   @= m.Enable(1)
             self.MOCK.REn   @= m.Enable(1)
 
@@ -928,13 +955,26 @@ def test_state_machine_fault():
     ########################################################################
 
 
-    ########################################################################
-    prlog0("-----------------------------------------------\n")
-    maddr = 66
-    prlog0(f"check SRAM[{maddr}] == 10066 ?\n")
-    tester.circuit.SRAM.RADDR = maddr
-    cycle()
-    tester.circuit.SRAM.RDATA.expect(10066)
+#     ########################################################################
+#     prlog0("-----------------------------------------------\n")
+#     maddr = 66
+#     prlog0(f"check SRAM[{maddr}] == 10066 ?\n")
+#     tester.circuit.SRAM.RADDR = maddr
+#     cycle()
+#     tester.circuit.SRAM.RDATA.expect(10066)
+# 
+#     ########################################################################
+#     prlog0("-----------------------------------------------\n")
+#     maddr = 66
+#     prlog0(f"check MOCK[{maddr}] == 10066 ?\n")
+#     # tester.circuit.MOCK.io.ADDR = maddr
+#     cycle()
+#     tester.circuit.MOCK.RDATA.expect(10066)
+
+
+
+
+
 
     ########################################################################
     prlog0("-----------------------------------------------\n")
