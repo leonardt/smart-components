@@ -568,6 +568,9 @@ class StateMachine(CoopGenerator):
             # FIXME remaining elif's should have more parallel structure :(
             elif info == Action.GetRedundancy:
 
+                self.MOCK.deep_sleep @= hw.Bit(0)
+                self.MOCK.power_gate @= hw.Bit(0)
+
                 # Enable regs
                 redundancy_reg_enable = ENABLE
 
@@ -587,7 +590,12 @@ class StateMachine(CoopGenerator):
 
                 # Setup
                 dtc_enable = ENABLE
-                data_to_client = WakeAckT
+
+                # data_to_client = WakeAckT
+                # data_to_client = m.Bits[16](m.Bit(1))
+                data_to_client = m.Bits[16](self.MOCK.wake_ack)
+
+                # data_to_client = WakeAckT
                 dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
@@ -598,27 +606,6 @@ class StateMachine(CoopGenerator):
                     # Reset
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
-
-
-            # State MemOn: GONE!!! See far below for old State MemOn
-
-
-            # State ReadAddr
-            elif info == Action.GetAddr:
-
-                # Setup
-                dfc_enable         = ENABLE
-                addr_to_mem_enable = ENABLE
-
-                # Get read-address info from client/testbench
-                # If successful, go to state ReadData
-
-                ready_for_dfc = READY        # Ready for new data
-                if dfc.is_valid():
-                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
-                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = smg.state(cur_state)
-
 
             # State WriteData is similar to ReadAddr/WriteAddr
             # elif cur_state == State.WriteData:
@@ -671,6 +658,15 @@ class StateMachine(CoopGenerator):
             self.SRAM.RADDR @= SRAM_raddr
             self.SRAM.WADDR @= SRAM_waddr
             self.SRAM.WDATA @= SRAM_wdata
+
+            self.MOCK.ADDR  @= SRAM_raddr
+            self.MOCK.WDATA @= SRAM_wdata
+
+            self.MOCK.CEn   @= m.Enable(1)
+            self.MOCK.WEn   @= m.Enable(1)
+            self.MOCK.REn   @= m.Enable(1)
+
+
             self.SRAM.WE @= 1
 
             # Wire up our shortcuts
