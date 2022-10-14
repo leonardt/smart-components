@@ -769,8 +769,6 @@ def test_state_machine_fault():
         tester.circuit.offer_valid = m.Bits[1](0)
 
 
-
-
     def send_and_check_dfc_data(dval, reg_name, reg):
 
         # Send dval to MC receive-queue as "DataFromClient" data
@@ -946,27 +944,6 @@ def test_state_machine_fault():
     ########################################################################
 
 
-#     ########################################################################
-#     prlog0("-----------------------------------------------\n")
-#     maddr = 0x66
-#     prlog0(f"check SRAM[{maddr:x}] == 0x1066 ?\n")
-#     tester.circuit.SRAM.RADDR = maddr
-#     cycle()
-#     tester.circuit.SRAM.RDATA.expect(0x1066)
-# 
-#     ########################################################################
-#     prlog0("-----------------------------------------------\n")
-#     maddr = 0x66
-#     prlog0(f"check MOCK[{maddr:x}] == 0x1066 ?\n")
-#     # tester.circuit.MOCK.io.ADDR = maddr
-#     cycle()
-#     tester.circuit.MOCK.RDATA.expect(0x1066)
-
-
-
-
-
-
     ########################################################################
     prlog0("-----------------------------------------------\n")
     prlog0("Check transition MemOn => ReadAddr on command Read\n")
@@ -1012,8 +989,9 @@ def test_state_machine_fault():
     prlog9("...CORRECT!\n")
 
     ########################################################################
+    # This whole block is a WRITE: SRAM[0x88] <= 0x1088
     ########################################################################
-    ########################################################################
+
     prlog0("-----------------------------------------------\n")
     prlog0("Check transition MemOn => WriteAddr on command Write\n")
     check_transition(Command.Write, State.WriteAddr)
@@ -1042,61 +1020,16 @@ def test_state_machine_fault():
     prlog0("Verify arrival in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
-    ########################################################################
-    ########################################################################
-    ########################################################################
 
     ########################################################################
-    ########################################################################
-    ########################################################################
-    prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOn => WriteAddr on command Write 1096\n")
-    check_transition(Command.Write, State.WriteAddr)
-    prlog9("successfully arrived in state WriteAddr\n")
-
-    ########################################################################
-    maddr = 0x88     # Set this to e.g. 87 to make it break below...
-    prlog9(f"-----------------------------------------------\n")
-    prlog0(f"Check that MC received mem addr '0x{maddr:x}'\n")
-    send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
-
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify arrival in state WriteData\n")
-    tester.circuit.current_state.expect(State.WriteData)
-    prlog9("...CORRECT!\n")
-
-    ########################################################################
-    data = 0x1088
-    prlog9(f"-----------------------------------------------\n")
-    prlog0(f"Send data '{data}' to MC and verify receipt\n")
-    send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
-
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify arrival in state MemOn\n")
-    tester.circuit.current_state.expect(State.MemOn)
-    prlog9("...CORRECT!\n")
-    ########################################################################
-    ########################################################################
+    # End write block
     ########################################################################
 
 
-
-
- #     prlog0("-----------------------------------------------\n")
-#     prlog0("Final check SRAM[0x88] == 0x1088 ?\n")
-#     tester.circuit.SRAM.RADDR = 0x88
-#     cycle()
-#     tester.circuit.SRAM.RDATA.expect(0x1088)
-
-    #------------------------------------------------------------------------
-    # BOOKMARK
-    # prlog0("GOOOOOD to here\n")
-    # tester.circuit.current_state.expect(13)
-    #------------------------------------------------------------------------
-
     ########################################################################
+    # This whole block is a READ: to check that SRAM[0x88] == 0x1088
+    ########################################################################
+
     prlog0("-----------------------------------------------\n")
     prlog0("Check transition MemOn => ReadAddr on command Read --1005\n")
     check_transition(Command.Read, State.ReadAddr)
@@ -1128,12 +1061,10 @@ def test_state_machine_fault():
     prlog0("Verify arrival in state MemOn\n")
     tester.circuit.current_state.expect(State.MemOn)
     prlog9("...CORRECT!\n")
-    cycle()
 
-
-
-
-
+    ########################################################################
+    # End read block
+    ########################################################################
 
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
