@@ -52,9 +52,9 @@ SRAM_base = SRAMDouble
 SRAM_base = SRAMSingle
 
 # Choose a "mixin"
+SRAM_mixins = (SRAMModalMixin, )
 SRAM_mixins = (SRAMRedundancyMixin, )
 SRAM_mixins = (SRAMModalMixin,SRAMRedundancyMixin, )
-SRAM_mixins = (SRAMModalMixin, )
 
 # If mode includes redundancy, will need to choose one of these two parameters
 if SRAMRedundancyMixin in SRAM_mixins:
@@ -63,6 +63,42 @@ if SRAMRedundancyMixin in SRAM_mixins:
     SRAM_params = { 'num_r_cols': 2 }
 else:
     SRAM_params = {}
+
+# ------------------------------------------------------------------------
+# Programmatically connect RFC signals for SRAMs w redundancy
+# FIXME this is terrible
+# FIXME also: not even sure if it's right
+
+# Use this one when SRAM_params = { 'num_r_cols': 1 }?
+def connect_RFCs_1col(ckt):
+    nbits=1
+    ckt.RCF0A @= hw.BitVector[nbits](0)
+
+# Use this one when SRAM_params = { 'num_r_cols': 2 }?
+def connect_RFCs_2col(ckt):
+    nbits=1
+    ckt.RCF0A @= hw.BitVector[nbits](0)
+    ckt.RCF1A @= hw.BitVector[nbits](1)
+
+# Use this one when SRAM_params = { 'num_r_cols': 3 }?
+def connect_RFCs_3col(ckt):
+    nbits=2
+    ckt.RCF0A @= hw.BitVector[nbits](0)
+    ckt.RCF1A @= hw.BitVector[nbits](1)
+    ckt.RCF2A @= hw.BitVector[nbits](2)
+
+def connect_RFCs_pass(ckt): pass
+
+# connect_RFCs = connect_RFCs_2col
+
+# Does this work
+if SRAMRedundancyMixin in SRAM_mixins:
+    # Choose one
+    SRAM_params = { 'num_r_cols': 1 }; connect_RFCs = connect_RFCs_1col
+    SRAM_params = { 'num_r_cols': 2 }; connect_RFCs = connect_RFCs_2col
+else:
+    SRAM_params = {}; connect_RFCs = connect_RFCs_pass
+
 
 #------------------------------------------------------------------------
 # State Machine generator setup
@@ -578,6 +614,26 @@ class StateMachine(CoopGenerator):
 
                 if dfc.is_valid():
                     redundancy_data = dfc.data
+
+                    # FIXME replace w user info ASAP
+                    # I.e. instead of 
+                    #    self.MOCK.RCE @= hw.BitVector[ncols](-1)
+                    # want something like
+                    #    self.MOCK.RCE @= redundancy_sate
+
+                    ncols = SRAM_params['num_r_cols']
+                    self.MOCK.RCE @= hw.BitVector[ncols](-1)
+
+                    # Want to do:
+                    #   nbits = m.bitutils.clog2safe(ncols)
+                    #   self.MOCK.RCF0A @= hw.BitVector[nbits](0)
+                    #   self.MOCK.RCF1A @= hw.BitVector[nbits](1)
+
+                    # Huh this seems to work???
+                    # FIXME/TODO need to test this and see if it works :(
+                    # Because I'm pretty sure it doesn't...
+                    connect_RFCs(self.MOCK)
+
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = smg.state(cur_state)
 

@@ -155,7 +155,13 @@ def test_redundancy(base, mixins, params):
         tester.step(2)
         tester.circuit.wake_ack.expect(hw.Bit(1))
 
-    # enable redudancy on the all columns
+    # steveri notes 10/2022
+    # It looks like the test is going to do this:
+    # 1. enable redundancy, and wirte zeroes to all locations i.e. mem[i]=0
+    # 2. diasble redundancy, and write each location mem[i] = i
+    # 3. enable redundancy, verify that only non-redundant columns are nonzero (??)
+
+    # enable redundancy on the all columns
     tester.circuit.RCE = hw.BitVector[params['num_r_cols']](-1)
 
     for i in range(params['num_r_cols']):
@@ -178,7 +184,7 @@ def test_redundancy(base, mixins, params):
         tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](0)
         tester.step(2)
 
-    # disable redudancy
+    # disable redundancy
     tester.circuit.RCE = hw.BitVector[params['num_r_cols']](0)
 
     # Write i everywhere
@@ -195,7 +201,7 @@ def test_redundancy(base, mixins, params):
         tester.circuit.WDATA = hw.BitVector[DATA_WIDTH](i)
         tester.step(2)
 
-    # enable redudancy
+    # enable redundancy
     tester.circuit.RCE = hw.BitVector[params['num_r_cols']](-1)
 
     # read everything back
