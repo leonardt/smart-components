@@ -458,8 +458,9 @@ class StateMachine(CoopGenerator):
 
         # redundancy reg holds redundancy data from ?client? for future ref
         # self.redundancy_reg = reg("redundancy_reg", nbits=16); # "redundancy" reg
+        ncols = SRAM_params['num_r_cols']
         self.redundancy_reg = m.Register(
-            T=m.Bits[16],
+            T=m.Bits[ncols],
             has_enable=True,
         )()
         self.redundancy_reg.name = "redundancy_reg"
@@ -536,7 +537,7 @@ class StateMachine(CoopGenerator):
                 addr_to_mem     = 13  # changes on read, write request
                 data_from_mem   = 14  # magically changes when addr_to_mem changes
                 data_to_client  = 15
-                redundancy_data = 16  # changes when we enter meminit state
+                # redundancy_data = 16  # changes when we enter meminit state
                 
                 # Seed SRAM with correct value for fault test; need SRAM[0x66] = 0x1066
                 MOCK_addr  = m.Bits[11](0x66)
@@ -613,16 +614,14 @@ class StateMachine(CoopGenerator):
                 dfc_enable = ENABLE
 
                 if dfc.is_valid():
-                    redundancy_data = dfc.data
+                    redundancy_data = dfc.data[0:2]
 
-                    # FIXME replace w user info ASAP
-                    # I.e. instead of 
-                    #    self.MOCK.RCE @= hw.BitVector[ncols](-1)
-                    # want something like
-                    #    self.MOCK.RCE @= redundancy_sate
+                    # Using jimmied-up data
+                    # ncols = SRAM_params['num_r_cols']
+                    # self.MOCK.RCE @= hw.BitVector[ncols](-1)
 
-                    ncols = SRAM_params['num_r_cols']
-                    self.MOCK.RCE @= hw.BitVector[ncols](-1)
+                    # Using data from user
+                    self.MOCK.RCE @= redundancy_data
 
                     # Want to do:
                     #   nbits = m.bitutils.clog2safe(ncols)
@@ -926,10 +925,13 @@ def test_state_machine_fault():
     prlog0("  - sending redundancy data to MC\n")
 
     ########################################################################
-    rdata = 17
+    # rdata = 17
+    # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
+    rdata = -1
+
     prlog9("-----------------------------------------------\n")
     prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
-    send_and_check_dfc_data(17, "redundancy", tester.circuit.redundancy_reg)
+    send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
