@@ -57,28 +57,17 @@ class CoopGenerator(m.Generator2):
     def _decl_components(self, **kwargs): pass
     def _connect(self, **kwargs): pass
 
-# FIXME can use enum
+from enum import Enum
+class Command(m.Enum):
+    NoCommand= 0
+    PowerOff = 1
+    PowerOn  = 2
+    Read     = 3
+    Write    = 4
+    Idle     = 5
 
-# >>> from enum import Enum
-# >>> class foo(Enum):
-# >>> class foo(Enum):
-# ...   e1=m.Bits[1](1)
-# ... 
-# >>> foo.e1
-# <foo.e1: Bits[1](1)>
 
-class Command():
-    #----------------------------------
-    num_commands = 6; i=0
-    nbits = (num_commands-1).bit_length()
-    #----------------------------------
-    NoCommand= m.Bits[nbits](i); i=i+1
-    PowerOff = m.Bits[nbits](i); i=i+1
-    PowerOn  = m.Bits[nbits](i); i=i+1 # not used
-    Read     = m.Bits[nbits](i); i=i+1
-    Write    = m.Bits[nbits](i); i=i+1
-    Idle     = m.Bits[nbits](i); i=i+1
-
+# FIXME use enum instead, see "class Command" above
 class Action():
     #----------------------------------
     num_actions = 7; i=0
@@ -92,6 +81,7 @@ class Action():
     ReadData      = m.Bits[nbits](i); i=i+1
     WriteData     = m.Bits[nbits](i); i=i+1
 
+# FIXME use enum instead, see "class Command" above
 class State():
     #----------------------------------
     num_states = 7; i=0
@@ -374,7 +364,7 @@ class StateMachine(CoopGenerator):
             receive_valid = m.In(m.Bits[ 1]),
             receive_ready = m.Out(m.Bits[1]),
 
-            offer       = m.In(m.Bits[Command.nbits]),
+            offer       = m.In(Command),
             offer_valid = m.In(m.Bits[1]),
             offer_ready = m.Out(m.Bits[1]),
 
@@ -441,8 +431,13 @@ class StateMachine(CoopGenerator):
 
         # Note: Redundancy info and address info both come in via DFC queue
 
+        # EXAMPLE
+        #   getattr(Command, '_info_')
+        #   => (Bits, 2, Bit)
+
+        nbits = getattr(Command, '_info_')[1]
         self.CommandFromClient = RcvQueue(
-            "CommandFromClient", nbits=Command.nbits, readyvalid=True,
+            "CommandFromClient", nbits=nbits, readyvalid=True,
             data_in   = self.io.offer,
             valid_in  = self.io.offer_valid,
             ready_out = self.io.offer_ready

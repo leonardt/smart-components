@@ -15,12 +15,21 @@ from onyx_sram_subsystem.mock_mem import SRAM_FEATURE_TABLE
 
 from onyx_sram_subsystem.state_machine import StateMachine
 from onyx_sram_subsystem.state_machine import StateMachineGraph
+
+# TODO/FIXME could wrap all these into e.g. "Enums" or "Constants"
+# Or i dunno "import Enums as e" then can use e.g. e.State, e.Command ?
 from onyx_sram_subsystem.state_machine import State
 from onyx_sram_subsystem.state_machine import Command
 from onyx_sram_subsystem.state_machine import Action
 
-ACTION  = m.Bits[1](0)
-COMMAND = m.Bits[1](1)
+# ACTION  = m.Bits[1](0)
+# COMMAND = m.Bits[1](1)
+# TODO/FIXME could be part of "Enums" class from above...
+# e.g. "e.CommandType", "e.ActionType" or something
+from onyx_sram_subsystem.state_machine import COMMAND
+from onyx_sram_subsystem.state_machine import ACTION
+
+
 
 mygraph = (
     (State.MemInit,   ACTION,  Action.GetRedundancy, State.MemOff),
