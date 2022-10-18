@@ -22,27 +22,25 @@ from onyx_sram_subsystem.state_machine import State
 from onyx_sram_subsystem.state_machine import Command
 from onyx_sram_subsystem.state_machine import Action
 
-# ACTION  = m.Bits[1](0)
-# COMMAND = m.Bits[1](1)
-# TODO/FIXME could be part of "Enums" class from above...
-# e.g. "e.CommandType", "e.ActionType" or something
-from onyx_sram_subsystem.state_machine import COMMAND
-from onyx_sram_subsystem.state_machine import ACTION
 
-
-
+ANY = Command.NoCommand
 mygraph = (
-    (State.MemInit,   ACTION,  Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    COMMAND, Command.PowerOn,      State.SendAck),
-    (State.MemOn,     COMMAND, Command.PowerOff,     State.MemOff),
-    (State.MemOn,     COMMAND, Command.Read,         State.ReadAddr),
-    (State.MemOn,     COMMAND, Command.Write,        State.WriteAddr),
-    (State.SendAck,   ACTION,  Action.SendAck,       State.MemOn),
-    (State.ReadAddr,  ACTION,  Action.GetAddr,       State.ReadData),
-    (State.WriteAddr, ACTION,  Action.GetAddr,       State.WriteData),
-    (State.WriteData, ACTION,  Action.WriteData,     State.MemOn),
-    (State.ReadData,  ACTION,  Action.ReadData,      State.MemOn),
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
 )
+# To test/break, can replace right state w wrong in an edge e.g.
+# < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+# > (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOff),
+
+
 
 
 smg = StateMachineGraph(mygraph)

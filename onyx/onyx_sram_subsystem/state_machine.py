@@ -142,8 +142,6 @@ def build_dot_graph(graph):
 
 # end side quest
 ##############################################################################
-
-
 # Example of input to StateMachineGraph():
 # 
 # mygraph = (
@@ -159,49 +157,41 @@ def build_dot_graph(graph):
 #     (State.ReadData,  ACTION,  Action.ReadData,      State.MemOn),
 # )
 
-
-
-# To test/break, can replace e.g.
-# <   (State.MemOff,  COMMAND, Command.PowerOn,      State.SendAck),
-# >   (State.MemOff,  COMMAND, Command.PowerOn,      State.MemOff),
-
-
-ACTION  = m.Bits[1](0)
-COMMAND = m.Bits[1](1)
-
 class StateMachineGraph():
 
     def __init__(self, graph): self.graph = list(graph)
 
     # Low-tech labels for our "edge" data structure/list
     def curstate  (self, edge): return edge[0]
-    def actype    (self, edge): return edge[1]
-    def acdata    (self, edge): return edge[2]
+    def command   (self, edge): return edge[1]
+    def action    (self, edge): return edge[2]
     def nextstate (self, edge): return edge[3]
 
-    def action(self, cur_state):
+    def get_action(self, cur_state):
         '''If cur_state matches and no command needed, return target action'''
         action = Action.NoAction # default    
         for e in self.graph:
-            action = (cur_state == self.curstate(e) ).ite(
-                (self.actype(e) == COMMAND).ite(
-                    Action.GetCommand,
-                    self.acdata(e)),
-                action)
+            e_state  = self.curstate(e)
+            e_action = self.action(e)
+            # If we are in the indicated state, tell SM to do the indicated action (duh)
+            action = (cur_state == e_state).ite(e_action, action)
         return action
             
-    def state(self, cur_state, command=Command.NoCommand):
+    def get_next_state(self, cur_state, command=Command.NoCommand):
         '''If cur_state and command both match, return target state'''
         state = cur_state # default    
         for e in self.graph:
-            state = (cur_state == self.curstate(e)).ite(
-                # need_command.ite(
-                (self.actype(e) == COMMAND).ite(
-                    (self.acdata(e) == command).ite(
-                        self.nextstate(e),
-                        state,
-                    ),
-                    self.nextstate(e),
+            e_command  = self.command(e)
+            e_curstate = self.curstate(e)
+            e_nextstate = self.nextstate(e)
+
+            state_match = (cur_state == e_curstate)
+            command_match = (command == e_command)
+
+            state = state_match.ite(
+                command_match.ite(
+                    e_nextstate,
+                    state
                 ),
                 state)
         return state
@@ -518,9 +508,9 @@ class StateMachine(CoopGenerator):
             # Given current state, find required action e.g.
             # 'Action.GetRedundancy' or 'Action.GetCommand'
             # info = match_action(cur_state)
-            info = self.smg.action(cur_state)
+            next_action = self.smg.get_action(cur_state)
 
-            if info == Action.GetCommand:
+            if next_action == Action.GetCommand:
 
                 # Enable command reg, ready cmd queue
                 cmd_enable = ENABLE
@@ -528,7 +518,7 @@ class StateMachine(CoopGenerator):
 
                 # E.g. cur_state==MemOff and cfc.data==PowerOn => goto MemOn
                 if cfc.is_valid():
-                    new_state = self.smg.state( cur_state, cfc.data)
+                    new_state = self.smg.get_next_state( cur_state, cfc.data)
                     if (new_state != cur_state):
                         ready_for_cmd = ~READY     # Got data, not yet ready for next command
                         next_state = new_state
@@ -536,7 +526,7 @@ class StateMachine(CoopGenerator):
             # FIXME remaining elif's should have more parallel structure :(
 
             # State.MemInit => Action.GetRedundancy()
-            elif info == Action.GetRedundancy:
+            elif next_action == Action.GetRedundancy:
 
                 # Wake up and turn on the power (FIXME or should this be in SendAck()?)
                 self.MOCK.deep_sleep @= hw.Bit(0)
@@ -572,10 +562,10 @@ class StateMachine(CoopGenerator):
                     connect_RFCs(self.MOCK)
 
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = self.smg.state(cur_state)
+                    next_state = self.smg.get_next_state(cur_state)
 
             # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
-            elif info == Action.SendAck:
+            elif next_action == Action.SendAck:
 
                 # Setup
                 dtc_enable = ENABLE
@@ -585,7 +575,7 @@ class StateMachine(CoopGenerator):
                 # dtc READY means they got the data and we can all move on
                 if dtc.is_ready() & self.MOCK.wake_ack:
                     # next_state = State.MemOn
-                    next_state = self.smg.state(cur_state)
+                    next_state = self.smg.get_next_state(cur_state)
 
                     # Reset
                     dtc_valid  = ~VALID
@@ -595,7 +585,7 @@ class StateMachine(CoopGenerator):
             # State MemOn: GONE!!! See far below for old State MemOn
 
             # State ReadAddr
-            elif info == Action.GetAddr:
+            elif next_action == Action.GetAddr:
 
                 # Don't know yet if address will be used for READ or WRITE
                 MOCK_we = m.Enable(1)
@@ -612,12 +602,12 @@ class StateMachine(CoopGenerator):
                 if dfc.is_valid():
                     addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = self.smg.state(cur_state)
+                    next_state = self.smg.get_next_state(cur_state)
 
 
             # State WriteData is similar to ReadAddr/WriteAddr
             # elif cur_state == State.WriteData:
-            elif info == Action.WriteData:
+            elif next_action == Action.WriteData:
 
                 # Enable WRITE, disable READ
                 MOCK_re = m.Enable(0)
@@ -642,11 +632,11 @@ class StateMachine(CoopGenerator):
                     MOCK_addr  = addr_to_mem[0:11]    # Address from prev step
                     MOCK_wdata = dfc.data             # Data from client
                     ready_for_dfc = ~READY            # Not yet ready for next data
-                    next_state = self.smg.state(cur_state) # GOTO State.MemOn
+                    next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
 
 
             # State ReadData
-            elif info == Action.ReadData:
+            elif next_action == Action.ReadData:
 
                 # Enable READ, disable WRITE
                 MOCK_re = m.Enable(1)
@@ -662,7 +652,7 @@ class StateMachine(CoopGenerator):
 
                 # dtc READY means they got the data and we can all move on
                 if dtc.is_ready():
-                    next_state = self.smg.state(cur_state) # GOTO State.MemOn
+                    next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
 
                     # Reset
                     dtc_valid  = ~VALID
