@@ -67,21 +67,17 @@ class Command(m.Enum):
     Idle     = 5
 
 
-# FIXME use enum instead, see "class Command" above
-class Action():
-    #----------------------------------
-    num_actions = 7; i=0
-    nbits = (num_actions-1).bit_length()
-    #----------------------------------
-    NoAction      = m.Bits[nbits](i); i=i+1
-    GetCommand    = m.Bits[nbits](i); i=i+1
-    GetRedundancy = m.Bits[nbits](i); i=i+1
-    SendAck       = m.Bits[nbits](i); i=i+1
-    GetAddr       = m.Bits[nbits](i); i=i+1
-    ReadData      = m.Bits[nbits](i); i=i+1
-    WriteData     = m.Bits[nbits](i); i=i+1
+class Action(m.Enum):
+    NoAction      = 0
+    GetCommand    = 1
+    GetRedundancy = 2
+    SendAck       = 3
+    GetAddr       = 4
+    ReadData      = 5
+    WriteData     = 6
 
-# FIXME use enum instead, see "class Command" above
+
+# FIXME Argh try as I might, could not make this work as m.Enum :(
 class State():
     #----------------------------------
     num_states = 7; i=0
@@ -95,6 +91,7 @@ class State():
     ReadData  = m.Bits[nbits](i); i=i+1 # 5
     WriteAddr = m.Bits[nbits](i); i=i+1 # 6
     WriteData = m.Bits[nbits](i); i=i+1 # 7
+
 
 ##############################################################################
 # begin side quest
@@ -352,7 +349,6 @@ class StateMachine(CoopGenerator):
 
     def _decl_attrs(self, **kwargs):
         super()._decl_attrs(**kwargs)
-        self.num_states = State.num_states
 
     def _decl_io(self, **kwargs):
         super()._decl_io(**kwargs)
