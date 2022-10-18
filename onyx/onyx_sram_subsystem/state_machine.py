@@ -97,22 +97,33 @@ class State():
 # begin side quest
 
 # Example of input to build_dot_graph:
-# mygraph_string = '''
-#     (State.MemInit,  ACTION,  Action.GetRedundancy, State.MemOff),
-#     (State.MemOff,   COMMAND, Command.PowerOn,      State.SendAck),
-#     (State.MemOn,     COMMAND, Command.PowerOff,    State.MemOff),
-#     (State.MemOn,     COMMAND, Command.Read,        State.ReadAddr),
-#     (State.MemOn,     COMMAND, Command.Write,       State.WriteAddr),
-#     (State.SendAck,   ACTION,  Action.SendAck,      State.MemOn),
-#     (State.ReadAddr,  ACTION,  Action.GetAddr,      State.ReadData),
-#     (State.WriteAddr, ACTION,  Action.GetAddr,      State.WriteData),
-#     (State.WriteData, ACTION,  Action.WriteData,    State.MemOn),
-#     (State.ReadData,  ACTION,  Action.ReadData,     State.MemOn),
-# '''
+# ANY = Command.NoCommand
+# mygraph = (
+#     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+#     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+#     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+#     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+#     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+#     (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+#     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+#     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+#     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+#     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+# )
+
+def match_enum(enum_class, enum_value):
+    '''Examples:
+          match_enum(State, State.MemOff)     => "MemOff"
+          match_enum(Action, Action.ReadData) => "ReadData"
+    '''
+    for i in dir(enum_class):
+        val = getattr(enum_class, i)
+        if type(val) == type(enum_value):
+            if int(val) == int(enum_value): return i
 
 def build_dot_graph(graph):
     '''
-    # Example: build_dot_graph(mygraph_string) =>
+    # Example: build_dot_graph(mygraph) =>
     # 
     #     digraph Diagram { node [shape=box];
     #       "MemInit"   -> "MemOff"    [label="GetRedundancy()"];
@@ -129,32 +140,34 @@ def build_dot_graph(graph):
     '''
     def quote(word): return '"' + word + '"'
     print('digraph Diagram { node [shape=box];')
-    for line in graph.split("\n"):
-        words = line.split()
-        if not words: continue
-        from_state = words[0][7:-1]
-        ac = words[1]
-        if (ac == "ACTION,"): label = words[2][7:-1] + "()"
-        else:                 label = words[2][8:-1]
-        to_state = words[3][6:-2]
-        print(f'  {quote(from_state):11} -> {quote(to_state):11} [label={quote(label)}];')
+    for edge in graph:
+        curstate  = match_enum(State, edge[0])
+        command   = match_enum(Command, edge[1])
+        action    = match_enum(Action, edge[2])
+        nextstate = match_enum(State, edge[3])
+
+        if action == "GetCommand": label = command
+        else:                      label = action + "()"
+
+        print(f'  {quote(curstate):11} -> {quote(nextstate):11} [label={quote(label)}];')
     print('}\n')
 
 # end side quest
 ##############################################################################
 # Example of input to StateMachineGraph():
 # 
+# ANY = Command.NoCommand
 # mygraph = (
-#     (State.MemInit,   ACTION,  Action.GetRedundancy, State.MemOff),
-#     (State.MemOff,    COMMAND, Command.PowerOn,      State.SendAck),
-#     (State.MemOn,     COMMAND, Command.PowerOff,     State.MemOff),
-#     (State.MemOn,     COMMAND, Command.Read,         State.ReadAddr),
-#     (State.MemOn,     COMMAND, Command.Write,        State.WriteAddr),
-#     (State.SendAck,   ACTION,  Action.SendAck,       State.MemOn),
-#     (State.ReadAddr,  ACTION,  Action.GetAddr,       State.ReadData),
-#     (State.WriteAddr, ACTION,  Action.GetAddr,       State.WriteData),
-#     (State.WriteData, ACTION,  Action.WriteData,     State.MemOn),
-#     (State.ReadData,  ACTION,  Action.ReadData,      State.MemOn),
+#     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+#     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+#     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+#     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+#     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+#     (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+#     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+#     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+#     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+#     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
 # )
 
 class StateMachineGraph():
