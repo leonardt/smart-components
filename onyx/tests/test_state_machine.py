@@ -142,15 +142,14 @@ import fault
 
 ########################################################################
 # FIXME can use logger
-DBG=True
+DBG  = True
+DBG9 = False
 if DBG:
-    def debug(m):
-        print(m, flush=True)
+    def debug(m): print(m, flush=True)
 else:
     def debug(m): pass
 
 
-DBG9 = False
 def test_state_machine_fault():
     
     debug("Build and test state machine")
@@ -163,12 +162,16 @@ def test_state_machine_fault():
         '''print to log iff extra debug requested'''
         if DBG9: tester.print("beep boop " + msg, *args)
 
+    # ready and valid are active high
+    READY=1; VALID=1
+
     # Convenient little shortcut
     # - tester.step(1) is one clock edge
     # - cycle(1) = one complete clock cycle = two clock edges (one pos, one neg)
     def cycle(n=1): tester.step(2*n)
 
     def check_transition(cmd, state):
+        ' Send "cmd" to controller, verify that it arrives in state "state" '
 
         # FIXME should check "ready" signal before sending data
         # something like...? 'while tester.circuit.offer_ready != 1: cycle()'
@@ -179,9 +182,10 @@ def test_state_machine_fault():
         tester.circuit.offer_valid = m.Bits[1](valid)
 
         # Because "offer" is registered, it takes two cycles to transition
-        # Cy 1: offer => reg, next_state changes (current_state stays the same)
+        # Cy 1: offer => offer_reg, next_state reg changes, current_state stays the same
         # Cy 2: 'next_state' wire clocks into 'current_state' reg
         # One cycle = two tester steps
+        # FIXME how would we do this in ONE cycle instead of two??
         cycle(2)
 
         # Verify arrival at desired state
@@ -192,16 +196,18 @@ def test_state_machine_fault():
 
 
     def send_and_check_dfc_data(dval, reg_name, reg):
+        '''
+        Send data to controller's DataFromClient (dfc) reg
+        and verify that controller stored it in its reg 'reg_name'
+        '''
 
         # Send dval to MC receive-queue as "DataFromClient" data
-        prlog9("...sending data to controller xxx\n")
+        prlog9("...sending data to controller L203\n")
         tester.circuit.receive = m.Bits[16](dval)
-
         # prlog0("initreg is now %d (1)\n", tester.circuit.initreg.O)
 
         # Mark receive-queue (dfc/DataFromQueue) data "valid"
         prlog9("...sending valid signal\n")
-        VALID = 1
         tester.circuit.receive_valid = VALID
 
         # FIXME should check "ready" signal before sending data
@@ -212,12 +218,12 @@ def test_state_machine_fault():
         cycle()
         tester.circuit.DataFromClient_valid.O.expect(VALID)
 
-        prlog9("  BEFORE: mem_addr_reg is %d\n", tester.circuit.mem_addr_reg.O)
+        # prlog9("  BEFORE: mem_addr_reg is %d\n", tester.circuit.mem_addr_reg.O)
+        prlog9(f"  BEFORE: {reg_name}_reg is %d\n", reg.O)
 
         # Sanity check of reg-enable signal
         prlog9("...CE better be active for dfc (CE=1)\n")
         tester.circuit.DataFromClient.CE.expect(1)
-
         prlog9("...CE better be active for internal reg too (CE=1)\n")
         reg.CE.expect(1)
 
@@ -229,7 +235,8 @@ def test_state_machine_fault():
         prlog9("...one more cy to latch data and move to new state\n")
         cycle()
 
-        prlog9("  AFTER: mem_addr_reg is %d (762)\n", tester.circuit.mem_addr_reg.O)
+        # prlog9("  AFTER: mem_addr_reg is %d (762)\n", tester.circuit.mem_addr_reg.O)
+        prlog9(f"  AFTER: {reg_name}_reg is %d (762)\n", reg.O)
 
         # Check latched data for correctness
         msg = f"MC received {reg_name} data '%d' ==? {dval} (0x{dval:x})"
@@ -239,8 +246,7 @@ def test_state_machine_fault():
 
 
     def get_and_check_dtc_data(dval):
-        cycle()
-        READY=1; VALID=1
+        "Get data from controller's DataToClient (dtc) interface"
 
         # We expect that sender has valid data
         # tester.print("beep boop ...expect send_valid TRUE...\n")
@@ -256,6 +262,9 @@ def test_state_machine_fault():
         cycle()
         tester.circuit.DataToClient_ready.O.expect(READY)
 
+        # Wait one complete clock cycle for...what...?
+        cycle()
+
         # See what we got / check latched data for correctness
         reg = tester.circuit.DataToClient
         msg = f"MC sent us data '%x' ==? {dval} (0x{dval:x})"
@@ -266,9 +275,40 @@ def test_state_machine_fault():
         prlog9(f"still expect ready=1\n")
         tester.circuit.DataToClient_ready.O.expect(READY)
 
-
         # reset ready signal i guess
         tester.circuit.send_ready = ~READY
+
+    def write_sram(data, addr):
+        ''' Assuming MC is in state MemOn, write "data" to "addr" '''
+
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOn => WriteAddr on command Write\n")
+        check_transition(Command.Write, State.WriteAddr)
+        prlog9("successfully arrived in state WriteAddr\n")
+
+        ########################################################################
+        # addr = 0x88     # Set this to e.g. 87 to make it break below...
+        prlog9(f"-----------------------------------------------\n")
+        prlog0(f"Check that MC received mem addr '0x{addr:x}'\n")
+        send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg)
+
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0("Verify arrival in state WriteData\n")
+        tester.circuit.current_state.expect(State.WriteData)
+        prlog9("...CORRECT!\n")
+
+        ########################################################################
+        # data = 0x1088
+        prlog9(f"-----------------------------------------------\n")
+        prlog0(f"Send data '{data}' to MC and verify receipt\n")
+        send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
+
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0("Verify arrival in state MemOn\n")
+        tester.circuit.current_state.expect(State.MemOn)
+        prlog9("...CORRECT!\n")
 
 
 
@@ -414,41 +454,7 @@ def test_state_machine_fault():
     prlog9("...CORRECT!\n")
 
     ########################################################################
-    # This whole block is a WRITE: SRAM[0x88] <= 0x1088
-    ########################################################################
-
-    prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOn => WriteAddr on command Write\n")
-    check_transition(Command.Write, State.WriteAddr)
-    prlog9("successfully arrived in state WriteAddr\n")
-
-    ########################################################################
-    maddr = 0x88     # Set this to e.g. 87 to make it break below...
-    prlog9(f"-----------------------------------------------\n")
-    prlog0(f"Check that MC received mem addr '0x{maddr:x}'\n")
-    send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
-
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify arrival in state WriteData\n")
-    tester.circuit.current_state.expect(State.WriteData)
-    prlog9("...CORRECT!\n")
-
-    ########################################################################
-    data = 0x1088
-    prlog9(f"-----------------------------------------------\n")
-    prlog0(f"Send data '{data}' to MC and verify receipt\n")
-    send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
-
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify arrival in state MemOn\n")
-    tester.circuit.current_state.expect(State.MemOn)
-    prlog9("...CORRECT!\n")
-
-    ########################################################################
-    # End write block
-    ########################################################################
+    write_sram(addr=0x88, data=0x1088)
 
 
     ########################################################################
@@ -524,7 +530,7 @@ def test_state_machine_fault():
         "verilator",
         flags=["-Wno-fatal"],
         magma_opts={"verilator_debug": True},
-        directory="tmp.state_machine",
+        directory="tmpdir",
     )
     # Note - If test succeeds, log (stdout) is not displayed :(
     print("""To read fault-test log:
