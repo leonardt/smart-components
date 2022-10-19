@@ -278,35 +278,38 @@ def test_state_machine_fault():
         # reset ready signal i guess
         tester.circuit.send_ready = ~READY
 
-    def write_sram(data, addr):
+    def write_sram(addr, data):
         ''' Assuming MC is in state MemOn, write "data" to "addr" '''
 
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOn => WriteAddr on command Write\n")
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"WRITE address '0x{addr:x}' with data '0x{data:x}'")
+
+        prlog9(f"-----------------------------------------------\n")
+        prlog9("Check transition MemOn => WriteAddr on command Write\n")
         check_transition(Command.Write, State.WriteAddr)
         prlog9("successfully arrived in state WriteAddr\n")
 
         ########################################################################
         # addr = 0x88     # Set this to e.g. 87 to make it break below...
         prlog9(f"-----------------------------------------------\n")
-        prlog0(f"Check that MC received mem addr '0x{addr:x}'\n")
+        prlog9(f"Check that MC received mem addr '0x{addr:x}'\n")
         send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg)
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
-        prlog0("Verify arrival in state WriteData\n")
+        prlog9("Verify arrival in state WriteData\n")
         tester.circuit.current_state.expect(State.WriteData)
         prlog9("...CORRECT!\n")
 
         ########################################################################
         # data = 0x1088
         prlog9(f"-----------------------------------------------\n")
-        prlog0(f"Send data '{data}' to MC and verify receipt\n")
+        prlog9(f"Send data '0x{data:x}' to MC and verify receipt\n")
         send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
-        prlog0("Verify arrival in state MemOn\n")
+        prlog9("Verify arrival in state MemOn\n")
         tester.circuit.current_state.expect(State.MemOn)
         prlog9("...CORRECT!\n")
 
@@ -314,32 +317,35 @@ def test_state_machine_fault():
     def read_sram(addr, expect_data):
         ' Read SRAM address "addr", verify that we got "expect_data" '
 
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"READ  address '0x{addr:x}', verify = '0x{expect_data:x}'")
+
         ########################################################################
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOn => ReadAddr on command Read\n")
+        prlog9("-----------------------------------------------\n")
+        prlog9("Check transition MemOn => ReadAddr on command Read\n")
         check_transition(Command.Read, State.ReadAddr)
         prlog9("successfully arrived in state ReadAddr\n")
 
         prlog9("-----------------------------------------------\n")
-        prlog0(f"Send addr '0x{addr:x}' to MC and check receipt\n")
+        prlog9(f"Send addr '0x{addr:x}' to MC and check receipt\n")
         send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg)
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
-        prlog0("Verify arrival in state ReadData\n")
+        prlog9("Verify arrival in state ReadData\n")
         tester.circuit.current_state.expect(State.ReadData)
         prlog9("...CORRECT!\n")
 
         ########################################################################
         # wantdata = 0x1066
         prlog9("-----------------------------------------------\n")
-        prlog0(f"Check that MC sent data '0x{wantdata:x}'\n")
+        prlog9(f"Check that MC sent data '0x{wantdata:x}'\n")
         get_and_check_dtc_data(expect_data)
         cycle()
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
-        prlog0("Verify arrival in state MemOn\n")
+        prlog9("Verify arrival in state MemOn\n")
         tester.circuit.current_state.expect(State.MemOn)
         prlog9("...CORRECT!\n")
         cycle()
@@ -446,60 +452,29 @@ def test_state_machine_fault():
     ########################################################################
 
 
-    ########################################################################
-    read_sram(addr=0x66, expect_data=0x1066)
+#     ########################################################################
+#     read_sram(addr=0x66, expect_data=0x1066)
+# 
+# 
+#     ########################################################################
+#     prlog9("-----------------------------------------------\n")
+#     prlog0("Verify *still* in state MemOn\n")
+#     tester.circuit.current_state.expect(State.MemOn)
+#     prlog9("...CORRECT!\n")
+# 
+# 
+#     ########################################################################
+#     write_sram(addr=0x88, data=0x1088)
 
 
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify *still* in state MemOn\n")
-    tester.circuit.current_state.expect(State.MemOn)
-    prlog9("...CORRECT!\n")
-
-
-    ########################################################################
-    write_sram(addr=0x88, data=0x1088)
-
-
-    ########################################################################
-    # This whole block is a READ: to check that SRAM[0x88] == 0x1088
-    ########################################################################
 
     prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOn => ReadAddr on command Read --1005\n")
-    check_transition(Command.Read, State.ReadAddr)
-    prlog9("successfully arrived in state ReadAddr\n")
+    write_sram(addr=0x33, data=       0x1033)
+    read_sram( addr=0x33, expect_data=0x1033)
 
-    ########################################################################
-    maddr = 0x88
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"Check that MC received mem addr '0x{maddr:x}'\n")
-
-    # Send mem_addr data, after which state should proceed to MemOff
-    send_and_check_dfc_data(maddr, "mem_addr", tester.circuit.mem_addr_reg)
-        
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify arrival in state ReadData\n")
-    tester.circuit.current_state.expect(State.ReadData)
-    prlog9("...CORRECT!\n")
-
-    ########################################################################
-    wantdata = 0x1088
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"Check that MC sent data '0x{wantdata:x}'\n")
-    get_and_check_dtc_data(wantdata)
-    cycle()
-
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Verify arrival in state MemOn\n")
-    tester.circuit.current_state.expect(State.MemOn)
-    prlog9("...CORRECT!\n")
-
-    ########################################################################
-    # End read block
-    ########################################################################
+    prlog0("-----------------------------------------------\n")
+    write_sram(addr=0x88, data=       0x1088)
+    read_sram( addr=0x88, expect_data=0x1088)
 
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
