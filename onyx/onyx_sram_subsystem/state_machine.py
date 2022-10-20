@@ -479,9 +479,10 @@ class StateMachine(CoopGenerator):
                 data_from_mem   = 14  # magically changes when addr_to_mem changes
                 data_to_client  = 15
                 
-                # Seed SRAM with correct value for fault test; need SRAM[0x66] = 0x1066
-                # MOCK_addr  = m.Bits[11](0x66)
-                # MOCK_wdata = m.Bits[16](0x1066)
+                # FIXME what? why?
+                # Seed MOCK_addr with any random value
+                # For some reason it breaks without this!!??
+                MOCK_addr  = m.Bits[11](0x6)
 
                 # So we only do this ONCE on start-up
                 init_next = m.Bits[1](0)
