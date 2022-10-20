@@ -24,8 +24,10 @@ from onyx_sram_subsystem.state_machine import Action
 
 
 ANY = Command.NoCommand
-mygraph_SMM_SMR = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+# FIXME/TODO these can all share the basic machine i.e. apply a hierarchy or some such
+mygraph_SMM = (
+    # (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
@@ -36,10 +38,19 @@ mygraph_SMM_SMR = (
     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
 )
-
-mygraph_SMM = (
-    # (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+mygraph_SRM = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+)
+mygraph_SMM_SMR = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
@@ -80,9 +91,7 @@ SMM=SRAMModalMixin
 SRM=SRAMRedundancyMixin
 
 base=SRAMSingle; mixins=();         params={                 }
-base=SRAMSingle; mixins=(SMM,);     params={                 }
 base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 }
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 }
 
 base=SRAMDouble; mixins=();         params={                 }
 base=SRAMDouble; mixins=(SMM,);     params={                 }
@@ -92,28 +101,25 @@ base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
 base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 
 
-
-# DONE/working
-base=SRAMSingle; mixins=(SMM,);     params={                 }
-mygraph = mygraph_SMM
-
-# DONE/working
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
+# DONE/working SMM_SRM GOOD
 mygraph = mygraph_SMM_SMR
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 } # currently untested
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 } # 1020.1455
+
+# DONE/working SMM GOOD!!
+mygraph = mygraph_SMM
+base=SRAMSingle; mixins=(SMM,);     params={                 } # 1020.1455
+
+# DONE/working SRM GOOD
+mygraph = mygraph_SRM
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1020.1455
 
 
 
 
+########################################################################
 smg = StateMachineGraph(mygraph)
-
-
-
-
-
 SRAM_base = base; SRAM_mixins = mixins; SRAM_params = params
-
-
 
 
 # ------------------------------------------------------------------------
@@ -166,6 +172,7 @@ MemDefinition = generator(
 )
 
 has_redundancy = (SRAMRedundancyMixin in SRAM_mixins)
+needs_wake_ack = (SMM in SRAM_mixins)
 
 
 
@@ -394,7 +401,7 @@ def test_state_machine_fault():
         ########################################################################
         # wantdata = 0x1066
         prlog9("-----------------------------------------------\n")
-        prlog9(f"Check that MC sent data '0x{wantdata:x}'\n")
+        prlog9(f"Check that MC sent data '0x{expect_data:x}'\n")
         get_and_check_dtc_data(expect_data)
         cycle()
 
@@ -455,27 +462,35 @@ def test_state_machine_fault():
     prlog9("successfully arrived in state MemOff\n")
 
 
-    # memoff => sendack => memon has to happen all together
-    ########################################################################
-    prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 752\n")
-    check_transition(Command.PowerOn, State.SendAck)
-    prlog9("successfully arrived in state SendAck\n")
-    ########################################################################
-    WAKE_ACK_TRUE = 1
+    if needs_wake_ack:
 
-    wantdata = WAKE_ACK_TRUE
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
-    get_and_check_dtc_data(wantdata)
-    cycle()
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
-    tester.circuit.current_state.expect(State.MemOn)
-    prlog9("  CORRECT!\n")
-    ########################################################################
+        # memoff => sendack => memon has to happen all together
+        ########################################################################
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 752\n")
+        check_transition(Command.PowerOn, State.SendAck)
+        prlog9("successfully arrived in state SendAck\n")
+        ########################################################################
+        WAKE_ACK_TRUE = 1
 
+        wantdata = WAKE_ACK_TRUE
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
+        get_and_check_dtc_data(wantdata)
+        cycle()
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
+        tester.circuit.current_state.expect(State.MemOn)
+        prlog9("  CORRECT!\n")
+        ########################################################################
+
+    else:
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
+        check_transition(Command.PowerOn, State.MemOn)
+        prlog9("successfully arrived in state MemOn\n")
+        
 
 
     ########################################################################
@@ -491,25 +506,35 @@ def test_state_machine_fault():
     prlog9("successfully arrived in state MemOff\n")
 
 
-    # memoff => sendack => memon has to happen all together
-    # FIXME consider making this a method/function/subroutine or whatever tf
-    ########################################################################
-    prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 944\n")
-    check_transition(Command.PowerOn, State.SendAck)
-    prlog9("successfully arrived in state SendAck\n")
-    ########################################################################
-    wantdata = int(WAKE_ACK_TRUE)
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
-    get_and_check_dtc_data(wantdata)
-    cycle()
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
-    tester.circuit.current_state.expect(State.MemOn)
-    prlog9(f"  - CORRECT!\n")
-    ########################################################################
+    # TODO/FIXME here and above, replace with def power_on() or something
+    if needs_wake_ack:
+
+        # memoff => sendack => memon has to happen all together
+        # FIXME consider making this a method/function/subroutine or whatever tf
+        ########################################################################
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 944\n")
+        check_transition(Command.PowerOn, State.SendAck)
+        prlog9("successfully arrived in state SendAck\n")
+        ########################################################################
+        wantdata = int(WAKE_ACK_TRUE)
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
+        get_and_check_dtc_data(wantdata)
+        cycle()
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
+        tester.circuit.current_state.expect(State.MemOn)
+        prlog9(f"  - CORRECT!\n")
+        ########################################################################
+    else:
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
+        check_transition(Command.PowerOn, State.MemOn)
+        prlog9("successfully arrived in state MemOn\n")
+
+
 
 
 #     ########################################################################

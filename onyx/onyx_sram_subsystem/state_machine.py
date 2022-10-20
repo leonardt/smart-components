@@ -347,15 +347,32 @@ class XmtQueue(Queue):
 
 class StateMachine(CoopGenerator):
 
-    def wire_it_up2(self, w):
+    def connect_RCE(self, w):
         if self.has_redundancy:
             self.mem.RCE @= w
 
 
-    def wire_it_up(self, w, w2):
+    def connect_redundancy_signals(self, w, w2):
         if self.has_redundancy:
             self.redundancy_reg.I  @= w
             self.redundancy_reg.CE @= w2
+
+    def power_on(self):
+        if self.needs_wake_ack:
+            self.mem.deep_sleep @= hw.Bit(0)
+            self.mem.power_gate @= hw.Bit(0)
+
+    def send_wake_ack(self):
+        if self.needs_wake_ack:
+            return m.bits(self.mem.wake_ack, 16)
+        else:
+            return m.Bits[16](0)
+
+    def got_wake_ack(self):
+        if self.needs_wake_ack:
+            return (self.mem.wake_ack == m.Bits[1](1))
+        else:
+            return (m.Bits[1](1) == m.Bits[1](1))
 
 
     # FIXME/TODO should not have to pass 'num_r_cols' as a separate parameter, yes?
@@ -363,14 +380,20 @@ class StateMachine(CoopGenerator):
         self.MemDefinition = MemDefinition
         self.smg = state_machine_graph
 
-
         # FIXME I'm sure there's a better way...
         # self.num_r_cols = MemDefinition.num_r_cols
-        if 'num_r_cols' in dir(MemDefinition):
+        if 'num_r_cols' in dir(self.MemDefinition):
             self.num_r_cols = MemDefinition.num_r_cols
             self.has_redundancy = True
         else:
             self.has_redundancy = False
+
+        if 'wake_ack' in dir(MemDefinition):
+            self.needs_wake_ack = True
+            self.wake_ack = self.MemDefinition.wake_ack
+        else:
+            self.needs_wake_ack = False
+            self.wake_ack = hw.Bit(0) # dummy value
 
         super().__init__(**kwargs)
 
@@ -576,8 +599,8 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.GetRedundancy:
 
                 # Wake up and turn on the power (FIXME or should this be in SendAck()?)
-                self.mem.deep_sleep @= hw.Bit(0)
-                self.mem.power_gate @= hw.Bit(0)
+                # self.mem.deep_sleep @= hw.Bit(0); self.mem.power_gate @= hw.Bit(0)
+                self.power_on()
 
                 # Enable regs
                 redundancy_reg_enable = ENABLE
@@ -595,11 +618,9 @@ class StateMachine(CoopGenerator):
                     # ncols = SRAM_params['num_r_cols']
                     # self.mem.RCE @= hw.BitVector[ncols](-1)
 
-                    # BOOKMARK
-
                     # Using data from user
                     # self.mem.RCE @= redundancy_data
-                    self.wire_it_up2(redundancy_data)
+                    self.connect_RCE(redundancy_data)
 
                     # Want to do:
                     #   nbits = m.bitutils.clog2safe(ncols)
@@ -618,13 +639,12 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.SendAck:
 
                 # Setup
+                data_to_client = self.send_wake_ack()
+                dtc_valid  = VALID
                 dtc_enable = ENABLE
-                data_to_client = m.bits(self.mem.wake_ack, 16)
-                dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
-                if dtc.is_ready() & self.mem.wake_ack:
-                    # next_state = State.MemOn
+                if dtc.is_ready() & self.got_wake_ack():
                     next_state = self.smg.get_next_state(cur_state)
 
                     # Reset
@@ -726,12 +746,10 @@ class StateMachine(CoopGenerator):
             self.mem_data_reg.I   @= data_to_mem
             self.mem_data_reg.CE  @= data_to_mem_enable
 
-            # BOOKMARK
-
             # self.redundancy_reg.I  @= redundancy_data
             # self.redundancy_reg.CE @= redundancy_reg_enable
 
-            self.wire_it_up(redundancy_data, redundancy_reg_enable)
+            self.connect_redundancy_signals(redundancy_data, redundancy_reg_enable)
 
             # "to" MessageQueue inputs
             self.CommandFromClient.ready  @= ready_for_cmd
