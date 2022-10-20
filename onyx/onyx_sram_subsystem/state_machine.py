@@ -344,8 +344,8 @@ class XmtQueue(Queue):
 class StateMachine(CoopGenerator):
 
     # FIXME/TODO should not have to pass 'num_r_cols' as a separate parameter, yes?
-    def __init__(self, SRAM_Definition, state_machine_graph, num_r_cols, **kwargs):
-        self.SRAM_Definition = SRAM_Definition
+    def __init__(self, MemDefinition, state_machine_graph, num_r_cols, **kwargs):
+        self.MemDefinition = MemDefinition
         self.smg = state_machine_graph
         self.num_r_cols = num_r_cols
         super().__init__(**kwargs)
@@ -422,7 +422,7 @@ class StateMachine(CoopGenerator):
         self.mem_data_reg.name = "mem_data_reg"
 
         # Instantiate SRAM using given definition
-        self.MOCK = self.SRAM_Definition()
+        self.mem = self.MemDefinition()
 
         # Formerly used registers o_reg, r_reg, and s_reg for IO.
         # Now, instead of registers, have ready/valid message
@@ -480,9 +480,9 @@ class StateMachine(CoopGenerator):
                 data_to_client  = 15
                 
                 # FIXME what? why?
-                # Seed MOCK_addr with any random value
+                # Seed SRAM_addr with any random value
                 # For some reason it breaks without this!!??
-                MOCK_addr  = m.Bits[11](0x6)
+                SRAM_addr  = m.Bits[11](0x6)
 
                 # So we only do this ONCE on start-up
                 init_next = m.Bits[1](0)
@@ -543,8 +543,8 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.GetRedundancy:
 
                 # Wake up and turn on the power (FIXME or should this be in SendAck()?)
-                self.MOCK.deep_sleep @= hw.Bit(0)
-                self.MOCK.power_gate @= hw.Bit(0)
+                self.mem.deep_sleep @= hw.Bit(0)
+                self.mem.power_gate @= hw.Bit(0)
 
                 # Enable regs
                 redundancy_reg_enable = ENABLE
@@ -560,20 +560,20 @@ class StateMachine(CoopGenerator):
 
                     # Using jimmied-up data
                     # ncols = SRAM_params['num_r_cols']
-                    # self.MOCK.RCE @= hw.BitVector[ncols](-1)
+                    # self.mem.RCE @= hw.BitVector[ncols](-1)
 
                     # Using data from user
-                    self.MOCK.RCE @= redundancy_data
+                    self.mem.RCE @= redundancy_data
 
                     # Want to do:
                     #   nbits = m.bitutils.clog2safe(ncols)
-                    #   self.MOCK.RCF0A @= hw.BitVector[nbits](0)
-                    #   self.MOCK.RCF1A @= hw.BitVector[nbits](1)
+                    #   self.mem.RCF0A @= hw.BitVector[nbits](0)
+                    #   self.mem.RCF1A @= hw.BitVector[nbits](1)
 
                     # Huh this seems to work???
                     # FIXME/TODO need to test this and see if it works :(
                     # Because I'm pretty sure it doesn't...
-                    connect_RFCs(self.MOCK)
+                    connect_RFCs(self.mem)
 
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state)
@@ -583,11 +583,11 @@ class StateMachine(CoopGenerator):
 
                 # Setup
                 dtc_enable = ENABLE
-                data_to_client = m.bits(self.MOCK.wake_ack, 16)
+                data_to_client = m.bits(self.mem.wake_ack, 16)
                 dtc_valid = VALID
 
                 # dtc READY means they got the data and we can all move on
-                if dtc.is_ready() & self.MOCK.wake_ack:
+                if dtc.is_ready() & self.mem.wake_ack:
                     # next_state = State.MemOn
                     next_state = self.smg.get_next_state(cur_state)
 
@@ -602,8 +602,8 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.GetAddr:
 
                 # Don't know yet if address will be used for READ or WRITE
-                MOCK_we = m.Enable(1)
-                MOCK_re = m.Enable(1)
+                SRAM_we = m.Enable(1)
+                SRAM_re = m.Enable(1)
 
                 # Setup
                 dfc_enable         = ENABLE
@@ -624,8 +624,8 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.WriteData:
 
                 # Enable WRITE, disable READ
-                MOCK_re = m.Enable(0)
-                MOCK_we = m.Enable(1)
+                SRAM_re = m.Enable(0)
+                SRAM_we = m.Enable(1)
 
                 # Get data from client, write it to SRAM
                 # If successful, go to state MemOn
@@ -643,8 +643,8 @@ class StateMachine(CoopGenerator):
 
                     # FIXME should probably turn WE on and off to prevent data shmearing
 
-                    MOCK_addr  = addr_to_mem[0:11]    # Address from prev step
-                    MOCK_wdata = dfc.data             # Data from client
+                    SRAM_addr  = addr_to_mem[0:11]    # Address from prev step
+                    SRAM_wdata = dfc.data             # Data from client
                     ready_for_dfc = ~READY            # Not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
 
@@ -653,14 +653,14 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.ReadData:
 
                 # Enable READ, disable WRITE
-                MOCK_re = m.Enable(1)
-                MOCK_we = m.Enable(0)
+                SRAM_re = m.Enable(1)
+                SRAM_we = m.Enable(0)
 
                 # Setup
                 dtc_enable = ENABLE
 
-                MOCK_addr = addr_to_mem[0:11]   # Address from prev step
-                data_to_client = self.MOCK.RDATA
+                SRAM_addr = addr_to_mem[0:11]   # Address from prev step
+                data_to_client = self.mem.RDATA
 
                 dtc_valid = VALID
 
@@ -672,14 +672,14 @@ class StateMachine(CoopGenerator):
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
 
-            self.MOCK.ADDR  @= MOCK_addr
-            self.MOCK.WDATA @= MOCK_wdata
+            self.mem.ADDR  @= SRAM_addr
+            self.mem.WDATA @= SRAM_wdata
 
             # CEn is active low :(
             # REn and WEn are both active high :(
-            self.MOCK.CEn   @= m.Enable(0)
-            self.MOCK.WEn   @= MOCK_we
-            self.MOCK.REn   @= MOCK_re
+            self.mem.CEn   @= m.Enable(0)
+            self.mem.WEn   @= SRAM_we
+            self.mem.REn   @= SRAM_re
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state

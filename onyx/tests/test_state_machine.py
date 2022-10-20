@@ -109,7 +109,7 @@ else:
 
 # Instantiate SRAM
 generator = SRAM_FEATURE_TABLE[SRAM_base][frozenset(SRAM_mixins)]
-MOCK_Definition = generator(
+MemDefinition = generator(
     SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **SRAM_params
 )
 
@@ -119,7 +119,7 @@ MOCK_Definition = generator(
 
 
 def build_verilog():
-    FSM = StateMachine(MOCK_Definition, smg)
+    FSM = StateMachine(MemDefinition, smg)
     m.compile("steveri/tmpdir/fsm", FSM, output="coreir-verilog")
 
 def show_verilog():
@@ -357,7 +357,7 @@ def test_state_machine_fault():
 
     ########################################################################
     # Tester setup
-    Definition = StateMachine(MOCK_Definition, smg, SRAM_params['num_r_cols'])
+    Definition = StateMachine(MemDefinition, smg, SRAM_params['num_r_cols'])
     tester = fault.Tester(Definition, Definition.CLK)
     prlog0("TESTING STATE_MACHINE CIRCUIT\n")
 
