@@ -344,10 +344,16 @@ class XmtQueue(Queue):
 class StateMachine(CoopGenerator):
 
     # FIXME/TODO should not have to pass 'num_r_cols' as a separate parameter, yes?
-    def __init__(self, MemDefinition, state_machine_graph, num_r_cols, **kwargs):
+    def __init__(self, MemDefinition, state_machine_graph, **kwargs):
         self.MemDefinition = MemDefinition
         self.smg = state_machine_graph
-        self.num_r_cols = num_r_cols
+
+
+        # self.num_r_cols = num_r_cols
+
+        self.num_r_cols = MemDefinition.num_r_cols
+
+
         super().__init__(**kwargs)
 
     def _decl_attrs(self, **kwargs):

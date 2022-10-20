@@ -45,10 +45,6 @@ smg = StateMachineGraph(mygraph)
 ########################################################################
 # SRAM setup
 
-# SRAM = 2K 16-bit words, just like garnet :)
-SRAM_ADDR_WIDTH = 11
-SRAM_DATA_WIDTH = 16
-
 # Maybe we'll come back to this, but probabl;y not...
 # # Choose a base
 # SRAM_base = SRAMDouble
@@ -91,9 +87,7 @@ base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 # TODO/in progress
 
 
-SRAM_base   = base
-SRAM_mixins = mixins
-SRAM_params = params
+SRAM_base = base; SRAM_mixins = mixins; SRAM_params = params
 
 
 
@@ -135,7 +129,9 @@ else:
 
 
 
-
+# SRAM = 2K 16-bit words, just like garnet :)
+SRAM_ADDR_WIDTH = 11
+SRAM_DATA_WIDTH = 16
 
 # Instantiate SRAM
 generator = SRAM_FEATURE_TABLE[SRAM_base][frozenset(SRAM_mixins)]
@@ -389,7 +385,7 @@ def test_state_machine_fault():
 
     ########################################################################
     # Tester setup
-    Definition = StateMachine(MemDefinition, smg, SRAM_params['num_r_cols'])
+    Definition = StateMachine(MemDefinition, smg)
     tester = fault.Tester(Definition, Definition.CLK)
     prlog0("TESTING STATE_MACHINE CIRCUIT\n")
 
