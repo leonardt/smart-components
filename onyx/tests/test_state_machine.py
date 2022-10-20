@@ -83,6 +83,7 @@ base=SRAMSingle; mixins=();         params={                 }
 base=SRAMSingle; mixins=(SMM,);     params={                 }
 base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 }
 base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 }
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
 
 base=SRAMDouble; mixins=();         params={                 }
 base=SRAMDouble; mixins=(SMM,);     params={                 }
@@ -94,17 +95,12 @@ base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 
 
 # DONE/working
-mygraph = mygraph_SMM
 base=SRAMSingle; mixins=(SMM,);     params={                 }
+mygraph = mygraph_SMM
 
 # DONE/working
-mygraph = mygraph_SMM_SMR
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
 base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
-
-# NEXT
-mygraph = mygraph_SMM
-base=SRAMSingle; mixins=();     params={                 }
+mygraph = mygraph_SMM_SMR
 
 
 
