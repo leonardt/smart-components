@@ -40,33 +40,63 @@ mygraph = (
 # < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
 # > (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOff),
 
-
-
-
 smg = StateMachineGraph(mygraph)
 
-
+########################################################################
+# SRAM setup
 
 # SRAM = 2K 16-bit words, just like garnet :)
 SRAM_ADDR_WIDTH = 11
 SRAM_DATA_WIDTH = 16
 
-# Choose a base
-SRAM_base = SRAMDouble
-SRAM_base = SRAMSingle
+# Maybe we'll come back to this, but probabl;y not...
+# # Choose a base
+# SRAM_base = SRAMDouble
+# SRAM_base = SRAMSingle
+# 
+# # Choose a "mixin"
+# SRAM_mixins = (SRAMModalMixin, )
+# SRAM_mixins = (SRAMRedundancyMixin, )
+# SRAM_mixins = (SRAMModalMixin,SRAMRedundancyMixin, )
+# 
+# # If mode includes redundancy, will need to choose one of these two parameters
+# if SRAMRedundancyMixin in SRAM_mixins:
+#     # Choose one
+#     SRAM_params = { 'num_r_cols': 1 }
+#     SRAM_params = { 'num_r_cols': 2 }
+# else:
+#     SRAM_params = {}
 
-# Choose a "mixin"
-SRAM_mixins = (SRAMModalMixin, )
-SRAM_mixins = (SRAMRedundancyMixin, )
-SRAM_mixins = (SRAMModalMixin,SRAMRedundancyMixin, )
+SMM=SRAMModalMixin
+SRM=SRAMRedundancyMixin
 
-# If mode includes redundancy, will need to choose one of these two parameters
-if SRAMRedundancyMixin in SRAM_mixins:
-    # Choose one
-    SRAM_params = { 'num_r_cols': 1 }
-    SRAM_params = { 'num_r_cols': 2 }
-else:
-    SRAM_params = {}
+base=SRAMSingle; mixins=();         params={                 }
+base=SRAMSingle; mixins=(SMM,);     params={                 }
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 }
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 }
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
+
+base=SRAMDouble; mixins=();         params={                 }
+base=SRAMDouble; mixins=(SMM,);     params={                 }
+base=SRAMDouble; mixins=(SRM,);     params={ 'num_r_cols': 1 }
+base=SRAMDouble; mixins=(SRM,);     params={ 'num_r_cols': 2 }
+base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
+base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
+
+
+
+# DONE/working
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
+
+# TODO/in progress
+
+
+SRAM_base   = base
+SRAM_mixins = mixins
+SRAM_params = params
+
+
+
 
 # ------------------------------------------------------------------------
 # Programmatically connect RFC signals for SRAMs w redundancy
@@ -116,6 +146,8 @@ MemDefinition = generator(
 
 
 
+# end SRAM setup
+########################################################################
 
 
 def build_verilog():
