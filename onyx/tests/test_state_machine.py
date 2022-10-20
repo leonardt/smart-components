@@ -99,10 +99,12 @@ base=SRAMSingle; mixins=(SMM,);     params={                 }
 
 # DONE/working
 mygraph = mygraph_SMM_SMR
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
 base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 
 # NEXT
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
+mygraph = mygraph_SMM
+base=SRAMSingle; mixins=();     params={                 }
 
 
 
