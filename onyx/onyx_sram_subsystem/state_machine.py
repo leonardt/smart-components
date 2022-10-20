@@ -83,6 +83,10 @@ class State():
     num_states = 7; i=0
     nbits = (num_states-1).bit_length()
     #----------------------------------
+
+    # FIXME/NOTE I think everything breaks if MemInit != 0 
+    # and/or MemInit is not first state in state machine...
+
     MemInit   = m.Bits[nbits](i); i=i+1 # 0
     MemOff    = m.Bits[nbits](i); i=i+1 # 1
     SendAck   = m.Bits[nbits](i); i=i+1 # 2 UNUSED???
@@ -343,16 +347,30 @@ class XmtQueue(Queue):
 
 class StateMachine(CoopGenerator):
 
+    def wire_it_up2(self, w):
+        if self.has_redundancy:
+            self.mem.RCE @= w
+
+
+    def wire_it_up(self, w, w2):
+        if self.has_redundancy:
+            self.redundancy_reg.I  @= w
+            self.redundancy_reg.CE @= w2
+
+
     # FIXME/TODO should not have to pass 'num_r_cols' as a separate parameter, yes?
     def __init__(self, MemDefinition, state_machine_graph, **kwargs):
         self.MemDefinition = MemDefinition
         self.smg = state_machine_graph
 
 
-        # self.num_r_cols = num_r_cols
-
-        self.num_r_cols = MemDefinition.num_r_cols
-
+        # FIXME I'm sure there's a better way...
+        # self.num_r_cols = MemDefinition.num_r_cols
+        if 'num_r_cols' in dir(MemDefinition):
+            self.num_r_cols = MemDefinition.num_r_cols
+            self.has_redundancy = True
+        else:
+            self.has_redundancy = False
 
         super().__init__(**kwargs)
 
@@ -405,12 +423,13 @@ class StateMachine(CoopGenerator):
         # 
         # FIXME/TODO should not have to pass 'num_r_cols' as a
         # separate parameter, yes?
-        ncols = self.num_r_cols
-        self.redundancy_reg = m.Register(
-            T=m.Bits[ncols],
-            has_enable=True,
-        )()
-        self.redundancy_reg.name = "redundancy_reg"
+        if self.has_redundancy:
+            ncols = self.num_r_cols
+            self.redundancy_reg = m.Register(
+                T=m.Bits[ncols],
+                has_enable=True,
+            )()
+            self.redundancy_reg.name = "redundancy_reg"
 
         # mem_addr reg holds mem_addr data from ?client? for future ref
         # self.mem_addr_reg = reg("mem_addr_reg", nbits=16); # "mem_addr" reg
@@ -513,7 +532,10 @@ class StateMachine(CoopGenerator):
             dtc_valid     = ~VALID     # Not ready to send data to client
 
             # Reset reg-enable signals
-            redundancy_reg_enable = ~ENABLE
+
+            if self.has_redundancy:
+                redundancy_reg_enable = ~ENABLE
+
             addr_to_mem_enable    = ~ENABLE
             dtc_enable            = ~ENABLE
             cmd_enable            = ~ENABLE
@@ -545,6 +567,11 @@ class StateMachine(CoopGenerator):
 
             # FIXME remaining elif's should have more parallel structure :(
 
+            elif next_action == Action.NoAction:
+                # next_state = self.smg.get_next_state(cur_state)
+                next_state = State.MemOff
+
+
             # State.MemInit => Action.GetRedundancy()
             elif next_action == Action.GetRedundancy:
 
@@ -568,8 +595,11 @@ class StateMachine(CoopGenerator):
                     # ncols = SRAM_params['num_r_cols']
                     # self.mem.RCE @= hw.BitVector[ncols](-1)
 
+                    # BOOKMARK
+
                     # Using data from user
-                    self.mem.RCE @= redundancy_data
+                    # self.mem.RCE @= redundancy_data
+                    self.wire_it_up2(redundancy_data)
 
                     # Want to do:
                     #   nbits = m.bitutils.clog2safe(ncols)
@@ -696,8 +726,12 @@ class StateMachine(CoopGenerator):
             self.mem_data_reg.I   @= data_to_mem
             self.mem_data_reg.CE  @= data_to_mem_enable
 
-            self.redundancy_reg.I  @= redundancy_data
-            self.redundancy_reg.CE @= redundancy_reg_enable
+            # BOOKMARK
+
+            # self.redundancy_reg.I  @= redundancy_data
+            # self.redundancy_reg.CE @= redundancy_reg_enable
+
+            self.wire_it_up(redundancy_data, redundancy_reg_enable)
 
             # "to" MessageQueue inputs
             self.CommandFromClient.ready  @= ready_for_cmd

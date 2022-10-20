@@ -24,7 +24,7 @@ from onyx_sram_subsystem.state_machine import Action
 
 
 ANY = Command.NoCommand
-mygraph = (
+mygraph_SMM_SMR = (
     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
@@ -36,11 +36,24 @@ mygraph = (
     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
 )
+
+mygraph_SMM = (
+    # (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+)
+
 # To test/break, can replace right state w wrong in an edge e.g.
 # < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
 # > (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOff),
-
-smg = StateMachineGraph(mygraph)
 
 ########################################################################
 # SRAM setup
@@ -82,9 +95,20 @@ base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 
 
 # DONE/working
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
+base=SRAMSingle; mixins=(SMM,);     params={                 }
+mygraph = mygraph_SMM
 
-# TODO/in progress
+# DONE/working
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
+mygraph = mygraph_SMM_SMR
+
+
+
+
+smg = StateMachineGraph(mygraph)
+
+
+
 
 
 SRAM_base = base; SRAM_mixins = mixins; SRAM_params = params
@@ -119,8 +143,10 @@ def connect_RFCs_pass(ckt): pass
 
 # connect_RFCs = connect_RFCs_2col
 
+has_redundancy = (SRAMRedundancyMixin in SRAM_mixins)
+
 # Does this work
-if SRAMRedundancyMixin in SRAM_mixins:
+if has_redundancy:
     # Choose one
     SRAM_params = { 'num_r_cols': 1 }; connect_RFCs = connect_RFCs_1col
     SRAM_params = { 'num_r_cols': 2 }; connect_RFCs = connect_RFCs_2col
@@ -139,6 +165,7 @@ MemDefinition = generator(
     SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **SRAM_params
 )
 
+has_redundancy = (SRAMRedundancyMixin in SRAM_mixins)
 
 
 
@@ -402,14 +429,19 @@ def test_state_machine_fault():
     prlog0("Successfully booted in state MemInit maybe\n")
     prlog0("  - sending redundancy data to MC\n")
 
-    ########################################################################
-    # rdata = 17
-    # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
-    rdata = -1
 
-    prlog9("-----------------------------------------------\n")
-    prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
-    send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
+    if has_redundancy:
+        ########################################################################
+        # rdata = 17
+        # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
+        rdata = -1
+
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
+        send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
+
+    else:
+        cycle()
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
