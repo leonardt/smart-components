@@ -478,12 +478,12 @@ class StateMachine(CoopGenerator):
                 addr_to_mem     = 13  # changes on read, write request
                 data_from_mem   = 14  # magically changes when addr_to_mem changes
                 data_to_client  = 15
-                # redundancy_data = 16  # changes when we enter meminit state
                 
                 # Seed SRAM with correct value for fault test; need SRAM[0x66] = 0x1066
-                MOCK_addr  = m.Bits[11](0x66)
-                MOCK_wdata = m.Bits[16](0x1066)
+                # MOCK_addr  = m.Bits[11](0x66)
+                # MOCK_wdata = m.Bits[16](0x1066)
 
+                # So we only do this ONCE on start-up
                 init_next = m.Bits[1](0)
 
             else:
