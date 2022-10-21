@@ -25,56 +25,46 @@ from onyx_sram_subsystem.state_machine import Action
 
 ANY = Command.NoCommand
 
-# FIXME/TODO these can all share the basic machine i.e. apply a hierarchy or some such
-mygraph_plain = (
+# State Machine Graph, MemInit => MemOn paths
+
+mygraph_nul_on = (
     (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+)
+mygraph_nul_ack = (
+    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+)
+mygraph_red_on = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+)
+mygraph_red_ack = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+)
+
+# State Machine Graph, MemOn => (read, write, off)
+
+mygraph_read_and_write = (
     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
 )
 
-mygraph_SMM = (
-    # (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
-)
-mygraph_SRM = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
-    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
-)
-mygraph_SMM_SMR = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
-)
+
+# FIXME/TODO these can all share the basic machine i.e. apply a hierarchy or some such
+mygraph_plain   = mygraph_nul_on  + mygraph_read_and_write
+mygraph_SMM     = mygraph_nul_ack + mygraph_read_and_write
+mygraph_SRM     = mygraph_red_on  + mygraph_read_and_write
+mygraph_SMM_SMR = mygraph_red_ack + mygraph_read_and_write
+
 
 # To test/break, can replace right state w wrong in an edge e.g.
 # < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
@@ -111,24 +101,24 @@ base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
 base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 
 
+# DONE/working plain GOOD!!
+mygraph = mygraph_plain
+base=SRAMSingle; mixins=();         params={                 } # 1020.1930
+base=SRAMDouble; mixins=();         params={                 } # 1020.1935
+
 # DONE/working SMM_SRM GOOD
 mygraph = mygraph_SMM_SMR
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 } # 1020.1455
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 } # 1020.1900
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 } # 1020.1930
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 } # 1020.1935
 
 # DONE/working SRM GOOD
 mygraph = mygraph_SRM
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1020.1455
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 } # 1020.1900
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1020.1930
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 } # 1020.1935
 
 # DONE/working SMM GOOD!!
 mygraph = mygraph_SMM
-base=SRAMSingle; mixins=(SMM,);     params={                 } # 1020.1900
-
-# DONE/working plain GOOD!!
-mygraph = mygraph_plain
-base=SRAMSingle; mixins=();         params={                 } # 1020.1900
-base=SRAMDouble; mixins=();         params={                 } # 1020.1910
+base=SRAMSingle; mixins=(SMM,);     params={                 } # 1020.1935
 
 
 
