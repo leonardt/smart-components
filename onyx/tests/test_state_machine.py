@@ -91,7 +91,6 @@ SMM=SRAMModalMixin
 SRM=SRAMRedundancyMixin
 
 base=SRAMSingle; mixins=();         params={                 }
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 }
 
 base=SRAMDouble; mixins=();         params={                 }
 base=SRAMDouble; mixins=(SMM,);     params={                 }
@@ -113,6 +112,7 @@ base=SRAMSingle; mixins=(SMM,);     params={                 } # 1020.1455
 # DONE/working SRM GOOD
 mygraph = mygraph_SRM
 base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1020.1455
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 }
 
 
 
