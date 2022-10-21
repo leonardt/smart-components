@@ -347,6 +347,14 @@ class XmtQueue(Queue):
 
 class StateMachine(CoopGenerator):
 
+    def connect_addr(self, w):
+        if self.is_single:
+            self.mem.ADDR  @= w
+        else:
+            self.mem.RADDR  @= w
+            self.mem.WADDR  @= w
+
+
     def connect_RCE(self, w):
         if self.has_redundancy:
             self.mem.RCE @= w
@@ -374,7 +382,6 @@ class StateMachine(CoopGenerator):
         else:
             return (m.Bits[1](1) == m.Bits[1](1))
 
-
     # FIXME/TODO should not have to pass 'num_r_cols' as a separate parameter, yes?
     def __init__(self, MemDefinition, state_machine_graph, **kwargs):
         self.MemDefinition = MemDefinition
@@ -394,6 +401,9 @@ class StateMachine(CoopGenerator):
         else:
             self.needs_wake_ack = False
             self.wake_ack = hw.Bit(0) # dummy value
+
+        # Single-port SRAM has 'ADDR', double-port has 'RADDR/WADDR'
+        self.is_single = ('ADDR' in dir(MemDefinition))
 
         super().__init__(**kwargs)
 
@@ -728,7 +738,9 @@ class StateMachine(CoopGenerator):
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
 
-            self.mem.ADDR  @= SRAM_addr
+            # FIXME/TODO these could both be simply 'self.connect_ad(SRAM_addr, SRAM_wdata)'
+            # self.mem.ADDR  @= SRAM_addr
+            self.connect_addr(SRAM_addr)
             self.mem.WDATA @= SRAM_wdata
 
             # CEn is active low :(
