@@ -110,10 +110,10 @@ if DBG:
 else:
     def debug(m): pass
 
-# @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
-@pytest.mark.parametrize('base', [SRAMSingle])
+@pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
 
-# Trailing commas in mixin parm tuples are *required* or it breaks...
+# Stacking decorators? What th'? How does this even work???
+# Trailing commas in 'mixins' tuples are *required* or it breaks...
 @pytest.mark.parametrize(
     'mixins,                                  params',
   [
