@@ -63,88 +63,20 @@ mygraph_read_and_write = (
 mygraph_plain   = mygraph_nul_on  + mygraph_read_and_write
 mygraph_SMM     = mygraph_nul_ack + mygraph_read_and_write
 mygraph_SRM     = mygraph_red_on  + mygraph_read_and_write
-mygraph_SMM_SMR = mygraph_red_ack + mygraph_read_and_write
+mygraph_SMM_SRM = mygraph_red_ack + mygraph_read_and_write
 
 
 # To test/break, can replace right state w wrong in an edge e.g.
 # < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
 # > (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOff),
 
-########################################################################
+
 # SRAM setup
-
-# Maybe we'll come back to this, but probabl;y not...
-# # Choose a base
-# SRAM_base = SRAMDouble
-# SRAM_base = SRAMSingle
-# 
-# # Choose a "mixin"
-# SRAM_mixins = (SRAMModalMixin, )
-# SRAM_mixins = (SRAMRedundancyMixin, )
-# SRAM_mixins = (SRAMModalMixin,SRAMRedundancyMixin, )
-# 
-# # If mode includes redundancy, will need to choose one of these two parameters
-# if SRAMRedundancyMixin in SRAM_mixins:
-#     # Choose one
-#     SRAM_params = { 'num_r_cols': 1 }
-#     SRAM_params = { 'num_r_cols': 2 }
-# else:
-#     SRAM_params = {}
-
-SMM=SRAMModalMixin
-SRM=SRAMRedundancyMixin
-
-base=SRAMDouble; mixins=(SMM,);     params={                 }
-base=SRAMDouble; mixins=(SRM,);     params={ 'num_r_cols': 1 }
-base=SRAMDouble; mixins=(SRM,);     params={ 'num_r_cols': 2 }
-base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 }
-base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
-
-
-# DONE/working plain GOOD!!
-mygraph = mygraph_plain
-base=SRAMDouble; mixins=();         params={                 } # 1020.0700
-base=SRAMSingle; mixins=();         params={                 } # 1020.0720
-
-# DONE/working SMM GOOD!!
-mygraph = mygraph_SMM
-base=SRAMSingle; mixins=(SMM,);     params={                 } # 1022.0700
-
-# DONE/working SRM GOOD
-mygraph = mygraph_SRM
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 } # 1022.0700
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1022.0720
-
-# DONE/working SMM_SRM GOOD
-mygraph = mygraph_SMM_SMR
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 } # 1022.0700
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 } # 1020.0720
-
-
-
-
-########################################################################
-smg = StateMachineGraph(mygraph)
-SRAM_base = base; SRAM_mixins = mixins; SRAM_params = params
-
 
 # SRAM = 2K 16-bit words, just like garnet :)
 SRAM_ADDR_WIDTH = 11
 SRAM_DATA_WIDTH = 16
 
-# Instantiate SRAM
-generator = SRAM_FEATURE_TABLE[SRAM_base][frozenset(SRAM_mixins)]
-MemDefinition = generator(
-    SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **SRAM_params
-)
-
-has_redundancy = (SRAMRedundancyMixin in SRAM_mixins)
-needs_wake_ack = (SMM in SRAM_mixins)
-
-
-
-# end SRAM setup
-########################################################################
 
 
 def build_verilog():
@@ -178,9 +110,38 @@ if DBG:
 else:
     def debug(m): pass
 
+# @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
+@pytest.mark.parametrize('base', [SRAMSingle])
 
-def test_state_machine_fault():
-    
+# Trailing commas in mixin parm tuples are *required* or it breaks...
+@pytest.mark.parametrize(
+    'mixins,                                  params,               graph',
+  [
+    ((),                                      {},                  mygraph_plain   ),
+    ((SRAMModalMixin, ),                      {},                  mygraph_SMM     ),
+    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 1 }, mygraph_SRM     ),
+    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 2 }, mygraph_SRM     ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 1 }, mygraph_SMM_SRM ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 2 }, mygraph_SMM_SRM ),
+  ]
+)
+
+# def test_state_machine_fault():
+def test_state_machine_fault(base, mixins, params, graph):
+
+    has_redundancy = (SRAMRedundancyMixin in mixins)
+    needs_wake_ack = (SRAMModalMixin      in mixins)
+
+    # if has_redundancy & needs_wake_ack: graph = etc. etc.
+
+
+    # Instantiate SRAM
+    smg = StateMachineGraph(graph)
+    generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
+    MemDefinition = generator(
+        SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **params
+    )
+
     debug("Build and test state machine")
 
     def prlog0(msg, *args):
