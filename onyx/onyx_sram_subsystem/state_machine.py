@@ -345,6 +345,37 @@ class XmtQueue(Queue):
     def get(self): return self.Reg.O
 
 
+########################################################################
+# FIXME yeah, this whole connect_RCF mechanism is not great...
+
+# ------------------------------------------------------------------------
+# Programmatically connect RFC signals for SRAMs w redundancy
+# FIXME this is terrible
+# FIXME also: not even sure if it's right
+
+# Use this one when SRAM_params = { 'num_r_cols': 1 }
+def connect_RCFs_1col(ckt):
+    nbits=1
+    ckt.RCF0A @= hw.BitVector[nbits](0)
+
+# Use this one when SRAM_params = { 'num_r_cols': 2 }
+def connect_RCFs_2col(ckt):
+    nbits=1
+    ckt.RCF0A @= hw.BitVector[nbits](0)
+    ckt.RCF1A @= hw.BitVector[nbits](1)
+
+# Use this one when SRAM_params = { 'num_r_cols': 3 }?
+def connect_RCFs_3col(ckt):
+    nbits=2
+    ckt.RCF0A @= hw.BitVector[nbits](0)
+    ckt.RCF1A @= hw.BitVector[nbits](1)
+    ckt.RCF2A @= hw.BitVector[nbits](2)
+
+# Use this one for non-redundant SRAMs
+def connect_RCFs_pass(ckt): pass
+
+
+
 class StateMachine(CoopGenerator):
 
     def connect_addr(self, w):
@@ -404,6 +435,25 @@ class StateMachine(CoopGenerator):
 
         # Single-port SRAM has 'ADDR', double-port has 'RADDR/WADDR'
         self.is_single = ('ADDR' in dir(MemDefinition))
+
+        # print(dir(MemDefinition))        # 'RCE', 'RCF0A', 'RCF1A'
+        # print( getattr(MemDefinition, 'IO') )
+        # assert False
+
+        # FIXME yeah, this whole connect_RCF mechanism is not great...
+        # Note ORDER IS IMPORTANT here
+        dm = dir(MemDefinition)
+
+        if   'RCF2A' in dm: connect_RCFs = connect_RCFs_3col
+        elif 'RCF1A' in dm: connect_RCFs = connect_RCFs_2col
+        elif 'RCF0A' in dm: connect_RCFs = connect_RCFs_1col
+        else:               connect_RCFs = connect_RCFs_pass
+
+        self.n_redundancy_bits = 1
+        if   'RCF2A' in dm: self.n_redundancy_bits = 3 # not sure this is correct...
+        elif 'RCF1A' in dm: self.n_redundancy_bits = 2
+        elif 'RCF0A' in dm: self.n_redundancy_bits = 1
+
 
         super().__init__(**kwargs)
 
@@ -622,7 +672,13 @@ class StateMachine(CoopGenerator):
                 dfc_enable = ENABLE
 
                 if dfc.is_valid():
-                    redundancy_data = dfc.data[0:2]
+
+                    # FIXME need better way to wrap up all this
+                    # SRAM-specific redundancy stuff---like n_redundancy_bits :(
+
+                    # redundancy_data = dfc.data[0:2]
+                    # redundancy_data = dfc.data[0:1]
+                    redundancy_data = dfc.data[0:self.n_redundancy_bits]
 
                     # Using jimmied-up data
                     # ncols = SRAM_params['num_r_cols']
@@ -638,9 +694,8 @@ class StateMachine(CoopGenerator):
                     #   self.mem.RCF1A @= hw.BitVector[nbits](1)
 
                     # Huh this seems to work???
-                    # FIXME/TODO need to test this and see if it works :(
-                    # Because I'm pretty sure it doesn't...
-                    connect_RFCs(self.mem)
+                    # FIXME/TODO move this up to a better place, make sure it still works...
+                    connect_RCFs(self.mem)
 
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state)

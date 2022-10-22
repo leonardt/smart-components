@@ -103,22 +103,22 @@ base=SRAMDouble; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 }
 
 # DONE/working plain GOOD!!
 mygraph = mygraph_plain
-base=SRAMSingle; mixins=();         params={                 } # 1020.1930
-base=SRAMDouble; mixins=();         params={                 } # 1020.1935
-
-# DONE/working SMM_SRM GOOD
-mygraph = mygraph_SMM_SMR
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 } # 1020.1930
-base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 } # 1020.1935
-
-# DONE/working SRM GOOD
-mygraph = mygraph_SRM
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1020.1930
-base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 } # 1020.1935
+base=SRAMDouble; mixins=();         params={                 } # 1020.0700
+base=SRAMSingle; mixins=();         params={                 } # 1020.0720
 
 # DONE/working SMM GOOD!!
 mygraph = mygraph_SMM
-base=SRAMSingle; mixins=(SMM,);     params={                 } # 1020.1935
+base=SRAMSingle; mixins=(SMM,);     params={                 } # 1022.0700
+
+# DONE/working SRM GOOD
+mygraph = mygraph_SRM
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 1 } # 1022.0700
+base=SRAMSingle; mixins=(SRM,);     params={ 'num_r_cols': 2 } # 1022.0720
+
+# DONE/working SMM_SRM GOOD
+mygraph = mygraph_SMM_SMR
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 1 } # 1022.0700
+base=SRAMSingle; mixins=(SMM,SRM,); params={ 'num_r_cols': 2 } # 1020.0720
 
 
 
@@ -126,45 +126,6 @@ base=SRAMSingle; mixins=(SMM,);     params={                 } # 1020.1935
 ########################################################################
 smg = StateMachineGraph(mygraph)
 SRAM_base = base; SRAM_mixins = mixins; SRAM_params = params
-
-
-# ------------------------------------------------------------------------
-# Programmatically connect RFC signals for SRAMs w redundancy
-# FIXME this is terrible
-# FIXME also: not even sure if it's right
-
-# Use this one when SRAM_params = { 'num_r_cols': 1 }?
-def connect_RFCs_1col(ckt):
-    nbits=1
-    ckt.RCF0A @= hw.BitVector[nbits](0)
-
-# Use this one when SRAM_params = { 'num_r_cols': 2 }?
-def connect_RFCs_2col(ckt):
-    nbits=1
-    ckt.RCF0A @= hw.BitVector[nbits](0)
-    ckt.RCF1A @= hw.BitVector[nbits](1)
-
-# Use this one when SRAM_params = { 'num_r_cols': 3 }?
-def connect_RFCs_3col(ckt):
-    nbits=2
-    ckt.RCF0A @= hw.BitVector[nbits](0)
-    ckt.RCF1A @= hw.BitVector[nbits](1)
-    ckt.RCF2A @= hw.BitVector[nbits](2)
-
-def connect_RFCs_pass(ckt): pass
-
-# connect_RFCs = connect_RFCs_2col
-
-has_redundancy = (SRAMRedundancyMixin in SRAM_mixins)
-
-# Does this work
-if has_redundancy:
-    # Choose one
-    SRAM_params = { 'num_r_cols': 1 }; connect_RFCs = connect_RFCs_1col
-    SRAM_params = { 'num_r_cols': 2 }; connect_RFCs = connect_RFCs_2col
-else:
-    SRAM_params = {}; connect_RFCs = connect_RFCs_pass
-
 
 
 # SRAM = 2K 16-bit words, just like garnet :)

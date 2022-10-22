@@ -17,8 +17,8 @@ f=$tmpdir/obj_dir/StateMachine.log
 cat $f | sed 's/beep/\
 beep/g'
 
-cmd="diff ref/StateMachine.v $tmpdir/StateMachine.v"
-echo ""
-echo "========================================================================"
-echo "Compare verilog-out to previous runs: $cmd"
-$cmd && echo PASS || echo FAIL
+# cmd="diff ref/StateMachine.v $tmpdir/StateMachine.v"
+# echo ""
+# echo "========================================================================"
+# echo "Compare verilog-out to previous runs: $cmd"
+# $cmd && echo PASS || echo FAIL
