@@ -115,24 +115,28 @@ else:
 
 # Trailing commas in mixin parm tuples are *required* or it breaks...
 @pytest.mark.parametrize(
-    'mixins,                                  params,               graph',
+    'mixins,                                  params',
   [
-    ((),                                      {},                  mygraph_plain   ),
-    ((SRAMModalMixin, ),                      {},                  mygraph_SMM     ),
-    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 1 }, mygraph_SRM     ),
-    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 2 }, mygraph_SRM     ),
-    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 1 }, mygraph_SMM_SRM ),
-    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 2 }, mygraph_SMM_SRM ),
+    ((),                                      {},                  ),
+    ((SRAMModalMixin, ),                      {},                  ),
+    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 1 }, ),
+    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 2 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 1 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 2 }, ),
   ]
 )
 
 # def test_state_machine_fault():
-def test_state_machine_fault(base, mixins, params, graph):
+def test_state_machine_fault(base, mixins, params):
 
     has_redundancy = (SRAMRedundancyMixin in mixins)
     needs_wake_ack = (SRAMModalMixin      in mixins)
 
-    # if has_redundancy & needs_wake_ack: graph = etc. etc.
+    # haha is this formatting stoopid or what
+    if   has_redundancy & needs_wake_ack: graph = mygraph_SMM_SRM
+    elif                  needs_wake_ack: graph = mygraph_SMM
+    elif has_redundancy                 : graph = mygraph_SRM
+    else                                : graph = mygraph_plain
 
 
     # Instantiate SRAM
