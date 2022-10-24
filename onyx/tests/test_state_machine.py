@@ -1,70 +1,30 @@
-import itertools as it
+##############################################################################
+# Importing things
+
+# import itertools as it
+# import hwtypes as hw
 
 import pytest
 import fault
-import hwtypes as hw
 import magma as m
 
-# SRAM setup
-
+# SRAM setup (mock_mem)
 from onyx_sram_subsystem.mock_mem import SRAMSingle
 from onyx_sram_subsystem.mock_mem import SRAMDouble
 from onyx_sram_subsystem.mock_mem import SRAMRedundancyMixin
 from onyx_sram_subsystem.mock_mem import SRAMModalMixin
 from onyx_sram_subsystem.mock_mem import SRAM_FEATURE_TABLE
 
+# state_machine setup
 from onyx_sram_subsystem.state_machine import StateMachine
 from onyx_sram_subsystem.state_machine import StateMachineGraph
 
+# state_machine constants
 # TODO/FIXME could wrap all these into e.g. "Enums" or "Constants"
 # Or i dunno "import Enums as e" then can use e.g. e.State, e.Command ?
 from onyx_sram_subsystem.state_machine import State
 from onyx_sram_subsystem.state_machine import Command
 from onyx_sram_subsystem.state_machine import Action
-
-
-ANY = Command.NoCommand
-
-# State Machine Graph, MemInit => MemOn paths
-
-mygraph_nul_on = (
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
-)
-mygraph_nul_ack = (
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-)
-mygraph_red_on = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
-)
-mygraph_red_ack = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-)
-
-# State Machine Graph, MemOn => (read, write, off)
-
-mygraph_read_and_write = (
-    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
-)
-
-
-# FIXME/TODO these can all share the basic machine i.e. apply a hierarchy or some such
-mygraph_plain   = mygraph_nul_on  + mygraph_read_and_write
-mygraph_SMM     = mygraph_nul_ack + mygraph_read_and_write
-mygraph_SRM     = mygraph_red_on  + mygraph_read_and_write
-mygraph_SMM_SRM = mygraph_red_ack + mygraph_read_and_write
-
 
 # To test/break, can replace right state w wrong in an edge e.g.
 # < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
@@ -129,16 +89,73 @@ else:
 # def test_state_machine_fault():
 def test_state_machine_fault(base, mixins, params):
 
-    has_redundancy = (SRAMRedundancyMixin in mixins)
-    needs_wake_ack = (SRAMModalMixin      in mixins)
+    ##############################################################################
+    # Each SRAM variant needs a different state machine to test it
 
-    # haha is this formatting stoopid or what
-    if   has_redundancy & needs_wake_ack: graph = mygraph_SMM_SRM
-    elif                  needs_wake_ack: graph = mygraph_SMM
-    elif has_redundancy                 : graph = mygraph_SRM
-    else                                : graph = mygraph_plain
+    # Convenient abbrev
+    ANY = Command.NoCommand
 
+    # Basic state machine common to all SRAM configurations
+    # Covers MemOn state and its children (read and write)
+    mygraph_read_and_write = (
+        (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+        (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+        (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+        (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+        (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+        (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+        (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+    )
 
+    # MemInit => MemOff => MemOn
+    # - for SRAMs w/ no redundancy and no wake ack
+    mygraph_nul_on = (
+        (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+    )
+
+    # MemInit => MemOff => SendAck => MemOn
+    # - for SRAMs w/ wake ack and no redundancy
+    mygraph_nul_ack = (
+        (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+        (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+    )
+
+    # MemInit => GetRedundancy => MemOff => MemOn
+    # - for SRAMs w/ redundancy and no wake ack
+    mygraph_red_on = (
+        (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+    )
+
+    # MemInit => GetRedundancy => MemOff => SendAck => MemOn
+    # - for SRAMs w/ redundancy and wake ack
+    mygraph_red_ack = (
+        (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+        (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+    )
+
+    ##############################################################################
+    # Assign graphs per SRAM variant
+
+    red = (SRAMRedundancyMixin in mixins)
+    ack = (SRAMModalMixin      in mixins)
+
+    if not red and not ack:
+        graph = mygraph_nul_on + mygraph_read_and_write
+
+    if red and not ack:
+        graph = mygraph_red_on + mygraph_read_and_write
+
+    if not red and ack:
+        graph = mygraph_nul_ack + mygraph_read_and_write    
+
+    if red and ack:
+        graph = mygraph_red_ack + mygraph_read_and_write
+
+    ##############################################################################
     # Instantiate SRAM
     smg = StateMachineGraph(graph)
     generator = SRAM_FEATURE_TABLE[base][frozenset(mixins)]
@@ -146,7 +163,13 @@ def test_state_machine_fault(base, mixins, params):
         SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **params
     )
 
-    debug("Build and test state machine")
+    # Convenient shortcuts for later
+
+    has_redundancy = (SRAMRedundancyMixin in mixins)
+    needs_wake_ack = (SRAMModalMixin      in mixins)
+
+    ##############################################################################
+    # Old school debugging: tell verilator to print things to its log
 
     def prlog0(msg, *args):
         '''print to log'''
@@ -155,6 +178,9 @@ def test_state_machine_fault(base, mixins, params):
     def prlog9(msg, *args):
         '''print to log iff extra debug requested'''
         if DBG9: tester.print("beep boop " + msg, *args)
+
+    ##############################################################################
+    debug("Build and test state machine")
 
     # ready and valid are active high
     READY=1; VALID=1
