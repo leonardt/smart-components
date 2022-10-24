@@ -37,9 +37,10 @@ from onyx_sram_subsystem.state_machine import Action
 SRAM_ADDR_WIDTH = 11
 SRAM_DATA_WIDTH = 16
 
+##############################################################################
+# Example build and show verilog functions
 
-
-def build_verilog():
+def build_verilog(smg):
     FSM = StateMachine(MemDefinition, smg)
     m.compile("steveri/tmpdir/fsm", FSM, output="coreir-verilog")
 
@@ -71,6 +72,7 @@ else:
     def debug(m): pass
 
 @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
+# @pytest.mark.parametrize('base', [SRAMSingle])
 
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
@@ -298,11 +300,11 @@ def test_state_machine_fault(base, mixins, params):
         # reset ready signal i guess
         tester.circuit.send_ready = ~READY
 
-    def write_sram(addr, data):
+    def write_sram(addr, data, dbg=True):
         ''' Assuming MC is in state MemOn, write "data" to "addr" '''
 
         prlog9("-----------------------------------------------\n")
-        prlog0(f"WRITE address '0x{addr:x}' with data '0x{data:x}'")
+        if dbg: prlog0(f"WRITE address '0x{addr:x}' with data '0x{data:x}'")
 
         prlog9(f"-----------------------------------------------\n")
         prlog9("Check transition MemOn => WriteAddr on command Write\n")
@@ -334,11 +336,11 @@ def test_state_machine_fault(base, mixins, params):
         prlog9("...CORRECT!\n")
 
 
-    def read_sram(addr, expect_data):
+    def read_sram(addr, expect_data, dbg=True):
         ' Read SRAM address "addr", verify that we got "expect_data" '
 
         prlog9("-----------------------------------------------\n")
-        prlog0(f"READ  address '0x{addr:x}', verify = '0x{expect_data:x}'")
+        if dbg: prlog0(f"READ  address '0x{addr:x}', verify = '0x{expect_data:x}'")
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
@@ -522,6 +524,28 @@ def test_state_machine_fault(base, mixins, params):
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
 
+
+    # Takes way too long to do all 2K addresses...so...
+    # ...just do first four and last four
+    def print_region(i): return (i <= 0x3) or (i >= 0x7fc)
+
+    prlog0("-----------------------------------------------\n")
+    prlog0("# For i = 0 to MAX_ADDR, write i => SRAM[i]\n")
+    # For i = 0 to MAX_ADDR, write i => SRAM[i]
+    for i in range( 1 << SRAM_ADDR_WIDTH ):
+        if not print_region(i): continue
+        write_sram(addr=i, data=i, dbg=print_region(i) )
+        if i==0x3: prlog0("...\n")
+
+    prlog0("-----------------------------------------------\n")
+    prlog0("# For i = 0 to MAX_ADDR, read SRAM[i] =? i\n")
+    # For i = 0 to MAX_ADDR, read SRAM[i] =? i
+    for i in range( 1 << SRAM_ADDR_WIDTH ):
+        if not print_region(i): continue
+        read_sram(addr=i, expect_data=i, dbg=print_region(i) )
+        if i==0x3: prlog0("...\n")
+
+    prlog0("-----------------------------------------------\n")
 
     ########################################################################
     # Note the newlines do not print to the log file so you have to do
