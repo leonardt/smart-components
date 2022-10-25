@@ -124,6 +124,16 @@ def test_state_machine_fault(base, mixins, params):
         (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
     )
 
+    mygraph_nul_ack = (
+        (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+        (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+
+        (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
+        (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
+    )
+
+
     # MemInit => GetRedundancy => MemOff => MemOn
     # - for SRAMs w/ redundancy and no wake ack
     mygraph_red_on = (
@@ -137,6 +147,9 @@ def test_state_machine_fault(base, mixins, params):
         (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
         (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
         (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+
+        (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
+        (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
     )
 
     ##############################################################################
@@ -423,6 +436,31 @@ def test_state_machine_fault(base, mixins, params):
 
 
     if needs_wake_ack:
+
+        prlog0("Check transition MemOff => DeepSleep => MemOff on command DeepSleep 752\n")
+        ########################################################################
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => DeepSleep on command DeepSleep 752\n")
+        check_transition(Command.DeepSleep, State.DeepSleep)
+        prlog9("successfully arrived in state DeepSleep\n")
+        ########################################################################
+
+        wantdata = 0
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
+        get_and_check_dtc_data(wantdata)
+        cycle()
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - and now we should be in state MemOff (0x{int(State.MemOff)})\n")
+        tester.circuit.current_state.expect(State.MemOff)
+        prlog9("  CORRECT!\n")
+        ########################################################################
+
+
+
+
+
 
         # memoff => sendack => memon has to happen all together
         ########################################################################

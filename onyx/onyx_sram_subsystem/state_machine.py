@@ -65,6 +65,7 @@ class Command(m.Enum):
     Read     = 3
     Write    = 4
     Idle     = 5
+    DeepSleep= 6
 
 
 class Action(m.Enum):
@@ -75,12 +76,13 @@ class Action(m.Enum):
     GetAddr       = 4
     ReadData      = 5
     WriteData     = 6
+    DeepSleep     = 7
 
 
 # FIXME Argh try as I might, could not make this work as m.Enum :(
 class State():
     #----------------------------------
-    num_states = 7; i=0
+    num_states = 8; i=0
     nbits = (num_states).bit_length()
     #----------------------------------
 
@@ -95,6 +97,8 @@ class State():
     ReadData  = m.Bits[nbits](i); i=i+1 # 5
     WriteAddr = m.Bits[nbits](i); i=i+1 # 6
     WriteData = m.Bits[nbits](i); i=i+1 # 7
+    DeepSleep = m.Bits[nbits](i); i=i+1 # 8
+    # When adding new states remember to update num_states above!!
 
 
 ##############################################################################
@@ -385,6 +389,10 @@ class StateMachine(CoopGenerator):
             self.mem.RADDR  @= w
             self.mem.WADDR  @= w
 
+    def connect_ds_pg(self, ds, pg):
+        if self.needs_wake_ack:
+            self.mem.deep_sleep @= ds
+            self.mem.power_gate @= pg
 
     def connect_RCE(self, w):
         if self.has_redundancy:
@@ -396,10 +404,16 @@ class StateMachine(CoopGenerator):
             self.redundancy_reg.I  @= w
             self.redundancy_reg.CE @= w2
 
-    def power_on(self):
-        if self.needs_wake_ack:
-            self.mem.deep_sleep @= hw.Bit(0)
-            self.mem.power_gate @= hw.Bit(0)
+# No this does not work :(
+#     def power_on(self):
+#         if self.needs_wake_ack:
+#             self.mem.deep_sleep @= hw.Bit(0)
+#             self.mem.power_gate @= hw.Bit(0)
+# 
+#     def goto_deep_sleep(self):
+#         if self.needs_wake_ack:
+#             self.mem.deep_sleep @= hw.Bit(1)
+#             self.mem.power_gate @= hw.Bit(1)
 
     def send_wake_ack(self, cur_state, cond):
 
@@ -613,6 +627,9 @@ class StateMachine(CoopGenerator):
                 # So we only do this ONCE on start-up
                 init_next = m.Bits[1](0)
 
+                # self.power_on()
+                ds = hw.Bit(0); pg = hw.Bit(0)
+
             else:
                 addr_to_mem = cur_addr
 
@@ -676,10 +693,6 @@ class StateMachine(CoopGenerator):
             # State.MemInit => Action.GetRedundancy()
             elif next_action == Action.GetRedundancy:
 
-                # Wake up and turn on the power (FIXME or should this be in SendAck()?)
-                # self.mem.deep_sleep @= hw.Bit(0); self.mem.power_gate @= hw.Bit(0)
-                self.power_on()
-
                 # Enable regs
                 redundancy_reg_enable = ENABLE
 
@@ -721,6 +734,9 @@ class StateMachine(CoopGenerator):
             # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
             elif next_action == Action.SendAck:
 
+                # self.power_on()
+                ds = hw.Bit(0); pg = hw.Bit(0)
+
                 # Setup
                 # data_to_client = self.send_wake_ack()
                 # dtc READY means they got the data and we can all move on
@@ -756,6 +772,25 @@ class StateMachine(CoopGenerator):
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state)
 
+
+            # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
+            elif next_action == Action.DeepSleep:
+
+                # self.goto_deep_sleep()
+                ds = hw.Bit(1); pg = hw.Bit(1)
+
+                # Setup
+                # data_to_client = self.send_wake_ack()
+                # dtc READY means they got the data and we can all move on
+                (
+                    data_to_client, 
+                    dtc_valid,
+                    dtc_enable,
+                    next_state,
+                ) = self.send_wake_ack(
+                    cur_state,
+                    dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
+                )
 
             # State WriteData is similar to ReadAddr/WriteAddr
             # elif cur_state == State.WriteData:
@@ -820,6 +855,9 @@ class StateMachine(CoopGenerator):
             self.mem.CEn   @= m.Enable(0)
             self.mem.WEn   @= SRAM_we
             self.mem.REn   @= SRAM_re
+
+            # self.mem.deep_sleep @= ds; self.mem.power_gate @= pg
+            self.connect_ds_pg(ds, pg)
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
