@@ -81,7 +81,7 @@ class Action(m.Enum):
 class State():
     #----------------------------------
     num_states = 7; i=0
-    nbits = (num_states-1).bit_length()
+    nbits = (num_states).bit_length()
     #----------------------------------
 
     # FIXME/NOTE I think everything breaks if MemInit != 0 
@@ -401,15 +401,32 @@ class StateMachine(CoopGenerator):
             self.mem.deep_sleep @= hw.Bit(0)
             self.mem.power_gate @= hw.Bit(0)
 
-    def send_wake_ack(self):
-        if self.needs_wake_ack:
-            return m.bits(self.mem.wake_ack, 16)
-        else:
-            return m.Bits[16](0)
+    def send_wake_ack(self, cur_state, cond):
 
-    def got_wake_ack(self):
+        # All active high
+        ENABLE = True
+        READY  = m.Bits[1](1)
+        VALID  = m.Bits[1](1)
+
         if self.needs_wake_ack:
-            return (self.mem.wake_ack == m.Bits[1](1))
+
+            # cond HI means client is ready to receive wake_ack signal, so
+            # can advance to next state and pull v/e low; else remain in
+            # current state and signal ready/waiting for client ready (v/e hi)
+
+            next_state = cond.ite(self.smg.get_next_state(cur_state), cur_state)
+            v          = cond.ite(~VALID,                                 VALID)
+            e          = cond.ite(~ENABLE,                               ENABLE)
+            return (m.bits(self.mem.wake_ack, 16), v, e, next_state)
+
+        else:
+            # dummy values. does not compile w/out this else clause :(
+            return (m.Bits[16](0),                      VALID,  ENABLE, cur_state)
+
+
+    def got_wake_ack(self, expected_value):
+        if self.needs_wake_ack:
+            return (self.mem.wake_ack == expected_value)
         else:
             return (m.Bits[1](1) == m.Bits[1](1))
 
@@ -529,6 +546,7 @@ class StateMachine(CoopGenerator):
         )()
         self.mem_data_reg.name = "mem_data_reg"
 
+        # FIXME move this up *before* any usage of self.mem :(
         # Instantiate SRAM using given definition
         self.mem = self.MemDefinition()
 
@@ -704,18 +722,17 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.SendAck:
 
                 # Setup
-                data_to_client = self.send_wake_ack()
-                dtc_valid  = VALID
-                dtc_enable = ENABLE
-
+                # data_to_client = self.send_wake_ack()
                 # dtc READY means they got the data and we can all move on
-                if dtc.is_ready() & self.got_wake_ack():
-                    next_state = self.smg.get_next_state(cur_state)
-
-                    # Reset
-                    dtc_valid  = ~VALID
-                    dtc_enable = ~ENABLE
- 
+                (
+                    data_to_client, 
+                    dtc_valid,
+                    dtc_enable,
+                    next_state,
+                ) = self.send_wake_ack(
+                    cur_state,
+                    dtc.is_ready() & self.got_wake_ack(m.Bits[1](1)),
+                )
 
             # State MemOn: GONE!!! See far below for old State MemOn
 
@@ -723,8 +740,8 @@ class StateMachine(CoopGenerator):
             elif next_action == Action.GetAddr:
 
                 # Don't know yet if address will be used for READ or WRITE
-                SRAM_we = m.Enable(1)
                 SRAM_re = m.Enable(1)
+                SRAM_we = m.Enable(1)
 
                 # Setup
                 dfc_enable         = ENABLE

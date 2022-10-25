@@ -450,7 +450,7 @@ def test_state_machine_fault(base, mixins, params):
         prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
         check_transition(Command.PowerOn, State.MemOn)
         prlog9("successfully arrived in state MemOn\n")
-        
+
 
 
     ########################################################################
@@ -521,10 +521,6 @@ def test_state_machine_fault(base, mixins, params):
     write_sram(addr=0x88, data=       0x1088)
     read_sram( addr=0x88, expect_data=0x1088)
 
-    prlog0("-----------------------------------------------\n")
-    prlog0("PASSED ALL TESTS\n")
-
-
     # Takes way too long to do all 2K addresses...so...
     # ...just do first four and last four
     def print_region(i): return (i <= 0x3) or (i >= 0x7fc)
@@ -546,6 +542,7 @@ def test_state_machine_fault(base, mixins, params):
         if i==0x3: prlog0("...\n")
 
     prlog0("-----------------------------------------------\n")
+    prlog0("PASSED ALL TESTS\n")
 
     ########################################################################
     # Note the newlines do not print to the log file so you have to do
