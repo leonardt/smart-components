@@ -27,7 +27,7 @@ from onyx_sram_subsystem.state_machine import Command
 from onyx_sram_subsystem.state_machine import Action
 
 # To test/break, can replace right state w wrong in an edge e.g.
-# < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+# < (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
 # > (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOff),
 
 
@@ -100,14 +100,14 @@ mygraph_nul_on = (
 # - for SRAMs w/ wake ack and no redundancy
 mygraph_nul_ack = (
     (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
+    (State.SetMode,   ANY,                Action.SendAck,       State.MemOn),
 
     (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
-    (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
+    (State.DeepSleep, ANY,                Action.SetMode,       State.MemOff),
 
-    (State.MemOff,    Command.TotalRetention,  Action.GetCommand,    State.TotalRetention),
-    (State.TotalRetention, ANY,                Action.TotalRetention,     State.MemOff),
+    (State.MemOff,    Command.TotalRetention,  Action.GetCommand, State.TotalRetention),
+    (State.TotalRetention, ANY,                Action.SetMode,    State.MemOff),
 )
 
 
@@ -122,14 +122,14 @@ mygraph_red_on = (
 # - for SRAMs w/ redundancy and wake ack
 mygraph_red_ack = (
     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
+    (State.SetMode,   ANY,                Action.SendAck,       State.MemOn),
 
     (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
-    (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
+    (State.DeepSleep, ANY,                Action.SetMode,  State.MemOff),
 
     (State.MemOff,    Command.TotalRetention,  Action.GetCommand,    State.TotalRetention),
-    (State.TotalRetention, ANY,                Action.TotalRetention,     State.MemOff),
+    (State.TotalRetention, ANY,                Action.SetMode,  State.MemOff),
 )
 
 
@@ -170,8 +170,8 @@ makedot("build/graph_ack_red", graph_ack_red)
 
 
 
-# @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
-@pytest.mark.parametrize('base', [SRAMSingle])
+@pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
+# @pytest.mark.parametrize('base', [SRAMSingle])
 
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
@@ -505,7 +505,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         ########################################################################
         prlog0("-----------------------------------------------\n")
         prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 752\n")
-        check_transition(Command.PowerOn, State.SendAck)
+        check_transition(Command.PowerOn, State.SetMode)
         prlog9("successfully arrived in state SendAck\n")
         ########################################################################
         WAKE_ACK_TRUE = 1
@@ -551,7 +551,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         ########################################################################
         prlog0("-----------------------------------------------\n")
         prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 944\n")
-        check_transition(Command.PowerOn, State.SendAck)
+        check_transition(Command.PowerOn, State.SetMode)
         prlog9("successfully arrived in state SendAck\n")
         ########################################################################
         wantdata = int(WAKE_ACK_TRUE)

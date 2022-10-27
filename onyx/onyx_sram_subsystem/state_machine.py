@@ -78,9 +78,7 @@ class Action(m.Enum):
     GetAddr       = 4
     ReadData      = 5
     WriteData     = 6
-    DeepSleep      = 7
-    TotalRetention = 8
-    Retention      = 9
+    SetMode       = 7
 
 
 # FIXME Argh try as I might, could not make this work as m.Enum :(
@@ -95,7 +93,7 @@ class State():
 
     MemInit   = m.Bits[nbits](i); i=i+1 # 0
     MemOff    = m.Bits[nbits](i); i=i+1 # 1
-    SendAck   = m.Bits[nbits](i); i=i+1 # 2 UNUSED???
+    SetMode   = m.Bits[nbits](i); i=i+1 # 2 UNUSED???
     MemOn     = m.Bits[nbits](i); i=i+1 # 3
     ReadAddr  = m.Bits[nbits](i); i=i+1 # 4
     ReadData  = m.Bits[nbits](i); i=i+1 # 5
@@ -130,11 +128,11 @@ def match_enum(enum_class, enum_value):
 # ANY = Command.NoCommand
 # mygraph = (
 #     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-#     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+#     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
 #     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
 #     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
 #     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-#     (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+#     (State.SetMode,   ANY,                Action.SendAck,       State.MemOn),
 #     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
 #     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
 #     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
@@ -728,7 +726,7 @@ class StateMachine(CoopGenerator):
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state)
 
-            # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
+            # State.MemOff + Command.PowerOn => State.SetMode => Action.SendAck()
             elif next_action == Action.SendAck:
 
                 # self.power_on()
@@ -770,30 +768,16 @@ class StateMachine(CoopGenerator):
                     next_state = self.smg.get_next_state(cur_state)
 
 
-            # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
-            elif next_action == Action.DeepSleep:
+            # State.MemOff + Command.PowerOn => State.SetMode => Action.SendAck()
+            elif next_action == Action.SetMode:
 
-                # self.goto_deep_sleep()
-                ds = hw.Bit(1); pg = hw.Bit(1)
-
-                # Setup
-                # data_to_client = self.send_wake_ack()
-                # dtc READY means they got the data and we can all move on
-                (
-                    data_to_client, 
-                    dtc_valid,
-                    dtc_enable,
-                    next_state,
-                ) = self.send_wake_ack(
-                    cur_state,
-                    dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
-                )
-
-            # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
-            elif next_action == Action.TotalRetention:
-
-                # self.goto_deep_sleep()
-                ds = hw.Bit(0); pg = hw.Bit(1)
+                if cfc.data == Command.DeepSleep:
+                    # self.goto_deep_sleep()
+                    ds = hw.Bit(1); pg = hw.Bit(1); ack = m.Bits[1](0)
+                elif cfc.data == Command.TotalRetention:
+                    ds = hw.Bit(0); pg = hw.Bit(1); ack = m.Bits[1](0)
+                elif cfc.data == Command.PowerOn:
+                    ds = hw.Bit(0); pg = hw.Bit(0); ack = m.Bits[1](1)
 
                 # Setup
                 # data_to_client = self.send_wake_ack()
@@ -805,11 +789,11 @@ class StateMachine(CoopGenerator):
                     next_state,
                 ) = self.send_wake_ack(
                     cur_state,
-                    dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
+                    # dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
+                    dtc.is_ready() & self.got_wake_ack(ack),
                 )
 
             # State WriteData is similar to ReadAddr/WriteAddr
-            # elif cur_state == State.WriteData:
             elif next_action == Action.WriteData:
 
                 # Enable WRITE, disable READ
