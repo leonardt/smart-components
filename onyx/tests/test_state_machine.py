@@ -154,6 +154,7 @@ def makedot(filename, graph):
     sys.stdout = orig_stdout
     f.close()
     
+    # FIXME need a catch here or something because in general this will not work!!!
     subprocess.run(f'dot {filename_dot} -Tpdf > {filename_pdf}', shell=True)
 
 graph         = mygraph_nul_on  + mygraph_read_and_write
@@ -162,7 +163,6 @@ graph_ack     = mygraph_nul_ack + mygraph_read_and_write
 graph_ack_red = mygraph_red_ack + mygraph_read_and_write
 
 
-# FIXME need a catch here or something because in general this will not work!!!
 makedot("build/graph",         graph)
 makedot("build/graph_red",     graph_red)
 makedot("build/graph_ack",     graph_ack)
@@ -176,38 +176,18 @@ makedot("build/graph_ack_red", graph_ack_red)
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
 @pytest.mark.parametrize(
-    'mixins,                                  params',
+    'mixins,                                  graph,           params',
   [
-    ((),                                      {},                  ),
-    ((SRAMModalMixin, ),                      {},                  ),
-    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 1 }, ),
-    ((SRAMRedundancyMixin, ),                 { 'num_r_cols': 2 }, ),
-    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 1 }, ),
-    ((SRAMModalMixin, SRAMRedundancyMixin, ), { 'num_r_cols': 2 }, ),
+    ((),                                      (graph),         {},                  ),
+    ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
+    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
+    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
 )
 
-# def test_state_machine_fault():
-def test_state_machine_fault(base, mixins, params):
-
-
-    ##############################################################################
-    # Assign graphs per SRAM variant
-
-    red = (SRAMRedundancyMixin in mixins)
-    ack = (SRAMModalMixin      in mixins)
-
-    if not red and not ack:
-        graph = mygraph_nul_on + mygraph_read_and_write
-
-    if red and not ack:
-        graph = mygraph_red_on + mygraph_read_and_write
-
-    if not red and ack:
-        graph = mygraph_nul_ack + mygraph_read_and_write    
-
-    if red and ack:
-        graph = mygraph_red_ack + mygraph_read_and_write
+def test_state_machine_fault(base, mixins, graph, params):
 
     ##############################################################################
     # Instantiate SRAM
@@ -218,7 +198,6 @@ def test_state_machine_fault(base, mixins, params):
     )
 
     # Convenient shortcuts for later
-
     has_redundancy = (SRAMRedundancyMixin in mixins)
     needs_wake_ack = (SRAMModalMixin      in mixins)
 
@@ -677,27 +656,4 @@ def test_state_machine_fault(base, mixins, params):
     print("""To read fault-test log:
     cat tmpdir/obj_dir/StateMachine.log | sed 's/beep/\\
 beep/g'    """)
-    #
-    #
-
-
-
-
-#     set f = foo
-#     dot $f.dot -Tpdf > $f.pdf
-#     pdfjam --scale 0.8 --landscape $f.pdf -o $f.jam
-#     echo lp -d gala -h gala $f.jam
-#     xpdf $f.jam
-
-#     if not red and not ack:
-#         graph = mygraph_nul_on + mygraph_read_and_write
-# 
-#     if red and not ack:
-#         graph = mygraph_red_on + mygraph_read_and_write
-# 
-#     if not red and ack:
-#         graph = mygraph_nul_ack + mygraph_read_and_write    
-# 
-#     if red and ack:
-#         graph = mygraph_red_ack + mygraph_read_and_write
-
+    pass
