@@ -1,7 +1,7 @@
 #!/bin/bash
 
 testdir=../tests
-tmpdir=$testdir/tmpdir
+tmpdir=$testdir/build
 
 echo "========================================================================"
 echo "Running state machine and fault test: 'python state_machine.py'"
@@ -12,7 +12,6 @@ echo "------------------------------------------------------------------------"
 
 echo -n "========================================================================"
 # echo    "stdout from test: cat tmpdir/obj_dir/StateMachine.log"
-f=tmpdir/obj_dir/StateMachine.log
 f=$tmpdir/obj_dir/StateMachine.log
 cat $f | sed 's/beep/\
 beep/g'

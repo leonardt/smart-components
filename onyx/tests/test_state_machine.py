@@ -197,6 +197,12 @@ def test_state_machine_fault(base, mixins, graph, params):
         SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **params
     )
 
+    # SRAM name, e.g. 'SRAMDM_inst0'. See mock_mem.py. E.g. 
+    # f=frozenset((SRAMModalMixin, ))
+    # SRAM_FEATURE_TABLE[SRAMSingle][f].__name__ => 'SRAMSM'
+    # => mock_name = 'SRAMSM_inst0'
+    mock_name = generator.__name__ + '_inst0'
+
     # Convenient shortcuts for later
     has_redundancy = (SRAMRedundancyMixin in mixins)
     needs_wake_ack = (SRAMModalMixin      in mixins)
@@ -455,14 +461,21 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     if needs_wake_ack:
 
-        prlog0("Check transition MemOff => DeepSleep => MemOff on command DeepSleep 752\n")
+        # needs_wake_ack means we have an SRAM with multiple possible states
+        # e.g. DeepSleep, Normal, etc.
+        mock_state = getattr(tester.circuit, mock_name).current_state
+
+        prlog0("Check transition MemOff => DeepSleep => MemOff on command DeepSleep 465\n")
         ########################################################################
         prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => DeepSleep on command DeepSleep 752\n")
+        prlog0("Check transition MemOff => DeepSleep on command DeepSleep 468\n")
         check_transition(Command.DeepSleep, State.DeepSleep)
         prlog9("successfully arrived in state DeepSleep\n")
         ########################################################################
 
+        prlog0("  - verify SRAM state = DeepSleep\n")
+        mock_state.expect(SRAMModalMixin.State.DeepSleep)
+
         wantdata = 0
         prlog9("-----------------------------------------------\n")
         prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
@@ -475,15 +488,17 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("  CORRECT!\n")
         ########################################################################
 
-
-        prlog0("Check transition MemOff => TotalRetention => MemOff on command TotalRetention 752\n")
+        prlog0("Check transition MemOff => TotalRetention => MemOff on command TotalRetention 491\n")
         ########################################################################
         prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => TotalRetention on command TotalRetention 752\n")
+        prlog0("Check transition MemOff => TotalRetention on command TotalRetention 494\n")
         check_transition(Command.TotalRetention, State.TotalRetention)
         prlog9("successfully arrived in state TotalRetention\n")
         ########################################################################
 
+        prlog0("  - verify SRAM state = TotalRetention\n")
+        mock_state.expect(SRAMModalMixin.State.TotalRetention)
+
         wantdata = 0
         prlog9("-----------------------------------------------\n")
         prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
@@ -495,20 +510,20 @@ def test_state_machine_fault(base, mixins, graph, params):
         tester.circuit.current_state.expect(State.MemOff)
         prlog9("  CORRECT!\n")
         ########################################################################
-
-
-
 
 
 
         # memoff => sendack => memon has to happen all together
         ########################################################################
         prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 752\n")
+        prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 528\n")
         check_transition(Command.PowerOn, State.SetMode)
         prlog9("successfully arrived in state SendAck\n")
         ########################################################################
         WAKE_ACK_TRUE = 1
+
+        prlog0("  - verify SRAM state = Normal\n")
+        mock_state.expect(SRAMModalMixin.State.Normal)
 
         wantdata = WAKE_ACK_TRUE
         prlog9("-----------------------------------------------\n")
@@ -650,7 +665,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         "verilator",
         flags=["-Wno-fatal"],
         magma_opts={"verilator_debug": True},
-        directory="tmpdir",
+        directory="build",
     )
     # Note - If test succeeds, log (stdout) is not displayed :(
     print("""To read fault-test log:
