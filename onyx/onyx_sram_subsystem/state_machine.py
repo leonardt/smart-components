@@ -65,7 +65,9 @@ class Command(m.Enum):
     Read     = 3
     Write    = 4
     Idle     = 5
-    DeepSleep= 6
+    DeepSleep      = 6
+    TotalRetention = 7
+    Retention      = 8
 
 
 class Action(m.Enum):
@@ -76,13 +78,15 @@ class Action(m.Enum):
     GetAddr       = 4
     ReadData      = 5
     WriteData     = 6
-    DeepSleep     = 7
+    DeepSleep      = 7
+    TotalRetention = 8
+    Retention      = 9
 
 
 # FIXME Argh try as I might, could not make this work as m.Enum :(
 class State():
     #----------------------------------
-    num_states = 8; i=0
+    num_states = 10; i=0
     nbits = (num_states).bit_length()
     #----------------------------------
 
@@ -98,29 +102,18 @@ class State():
     WriteAddr = m.Bits[nbits](i); i=i+1 # 6
     WriteData = m.Bits[nbits](i); i=i+1 # 7
     DeepSleep = m.Bits[nbits](i); i=i+1 # 8
+    TotalRetention = m.Bits[nbits](i); i=i+1 # 9
+    Retention      = m.Bits[nbits](i); i=i+1 # 10
     # When adding new states remember to update num_states above!!
 
 
 ##############################################################################
 # begin side quest
 
-# Example of input to build_dot_graph:
-# ANY = Command.NoCommand
-# mygraph = (
-#     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-#     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-#     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-#     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-#     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-#     (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-#     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-#     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-#     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-#     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
-# )
-
 def match_enum(enum_class, enum_value):
-    '''Examples:
+    '''
+    Given enum class and value, return the name of enum as a string.
+    Examples:
           match_enum(State, State.MemOff)     => "MemOff"
           match_enum(Action, Action.ReadData) => "ReadData"
     '''
@@ -129,36 +122,6 @@ def match_enum(enum_class, enum_value):
         if type(val) == type(enum_value):
             if int(val) == int(enum_value): return i
 
-def build_dot_graph(graph):
-    '''
-    # Example: build_dot_graph(mygraph) =>
-    # 
-    #     digraph Diagram { node [shape=box];
-    #       "MemInit"   -> "MemOff"    [label="GetRedundancy()"];
-    #       "MemOff"    -> "SendAck"   [label="PowerOn"];
-    #       "MemOn"     -> "MemOff"    [label="PowerOff"];
-    #       "MemOn"     -> "ReadAddr"  [label="Read"];
-    #       "MemOn"     -> "WriteAddr" [label="Write"];
-    #       "SendAck"   -> "MemOn"     [label="SendAck()"];
-    #       "ReadAddr"  -> "ReadData"  [label="GetAddr()"];
-    #       "WriteAddr" -> "WriteData" [label="GetAddr()"];
-    #       "WriteData" -> "MemOn"     [label="WriteData()"];
-    #       "ReadData"  -> "MemOn"     [label="ReadData()"];
-    #     }
-    '''
-    def quote(word): return '"' + word + '"'
-    print('digraph Diagram { node [shape=box];')
-    for edge in graph:
-        curstate  = match_enum(State, edge[0])
-        command   = match_enum(Command, edge[1])
-        action    = match_enum(Action, edge[2])
-        nextstate = match_enum(State, edge[3])
-
-        if action == "GetCommand": label = command
-        else:                      label = action + "()"
-
-        print(f'  {quote(curstate):11} -> {quote(nextstate):11} [label={quote(label)}];')
-    print('}\n')
 
 # end side quest
 ##############################################################################
@@ -216,6 +179,40 @@ class StateMachineGraph():
                 ),
                 state)
         return state
+
+    def build_dot_graph(graph):
+        '''
+        Given a graph in StateMachine format, build a dot input file.
+        # Example: build_dot_graph(mygraph) =>
+        # 
+        #     digraph Diagram { node [shape=box];
+        #       "MemInit"   -> "MemOff"    [label="GetRedundancy()"];
+        #       "MemOff"    -> "SendAck"   [label="PowerOn"];
+        #       "MemOn"     -> "MemOff"    [label="PowerOff"];
+        #       "MemOn"     -> "ReadAddr"  [label="Read"];
+        #       "MemOn"     -> "WriteAddr" [label="Write"];
+        #       "SendAck"   -> "MemOn"     [label="SendAck()"];
+        #       "ReadAddr"  -> "ReadData"  [label="GetAddr()"];
+        #       "WriteAddr" -> "WriteData" [label="GetAddr()"];
+        #       "WriteData" -> "MemOn"     [label="WriteData()"];
+        #       "ReadData"  -> "MemOn"     [label="ReadData()"];
+        #     }
+        '''
+        def quote(word): return '"' + word + '"'
+        print('digraph Diagram { node [shape=box];')
+        for edge in graph:
+            curstate  = match_enum(State, edge[0])
+            command   = match_enum(Command, edge[1])
+            action    = match_enum(Action, edge[2])
+            nextstate = match_enum(State, edge[3])
+
+            if action == "GetCommand": label = command
+            else:                      label = action + "()"
+
+            print(f'  {quote(curstate):11} -> {quote(nextstate):11} [label={quote(label)}];')
+        print('}\n')
+
+
 
     # FIXME/TODO def dot() etc.
 
@@ -778,6 +775,25 @@ class StateMachine(CoopGenerator):
 
                 # self.goto_deep_sleep()
                 ds = hw.Bit(1); pg = hw.Bit(1)
+
+                # Setup
+                # data_to_client = self.send_wake_ack()
+                # dtc READY means they got the data and we can all move on
+                (
+                    data_to_client, 
+                    dtc_valid,
+                    dtc_enable,
+                    next_state,
+                ) = self.send_wake_ack(
+                    cur_state,
+                    dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
+                )
+
+            # State.MemOff + Command.PowerOn => State.SendAck => Action.SendAck()
+            elif next_action == Action.TotalRetention:
+
+                # self.goto_deep_sleep()
+                ds = hw.Bit(0); pg = hw.Bit(1)
 
                 # Setup
                 # data_to_client = self.send_wake_ack()

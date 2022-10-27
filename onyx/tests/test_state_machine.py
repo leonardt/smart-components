@@ -71,8 +71,107 @@ if DBG:
 else:
     def debug(m): pass
 
-@pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
-# @pytest.mark.parametrize('base', [SRAMSingle])
+##############################################################################
+# Each SRAM variant needs a different state machine to test it
+
+# Convenient abbrev
+ANY = Command.NoCommand
+
+# Basic state machine common to all SRAM configurations
+# Covers MemOn state and its children (read and write)
+mygraph_read_and_write = (
+    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
+    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
+    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
+    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
+    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+)
+
+# MemInit => MemOff => MemOn
+# - for SRAMs w/ no redundancy and no wake ack
+mygraph_nul_on = (
+    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+)
+
+# MemInit => MemOff => SendAck => MemOn
+# - for SRAMs w/ wake ack and no redundancy
+mygraph_nul_ack = (
+    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+
+    (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
+    (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
+
+    (State.MemOff,    Command.TotalRetention,  Action.GetCommand,    State.TotalRetention),
+    (State.TotalRetention, ANY,                Action.TotalRetention,     State.MemOff),
+)
+
+
+# MemInit => GetRedundancy => MemOff => MemOn
+# - for SRAMs w/ redundancy and no wake ack
+mygraph_red_on = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+)
+
+# MemInit => GetRedundancy => MemOff => SendAck => MemOn
+# - for SRAMs w/ redundancy and wake ack
+mygraph_red_ack = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
+    (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
+
+    (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
+    (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
+
+    (State.MemOff,    Command.TotalRetention,  Action.GetCommand,    State.TotalRetention),
+    (State.TotalRetention, ANY,                Action.TotalRetention,     State.MemOff),
+)
+
+
+# makedot("build/SMM", mygraph_nul_on + mygraph_read_and_write)
+def makedot(filename, graph):
+
+    # from onyx_sram_subsystem.state_machine import build_dot_graph
+    import sys
+    import subprocess
+
+    orig_stdout = sys.stdout
+
+    filename_dot = filename + ".dot"
+    filename_pdf = filename + ".pdf"
+    
+
+    # f = open('build/deleteme.txt', 'w')
+    f = open(filename_dot, 'w')
+
+    sys.stdout = f
+    StateMachineGraph.build_dot_graph(graph)
+    sys.stdout = orig_stdout
+    f.close()
+    
+    subprocess.run(f'dot {filename_dot} -Tpdf > {filename_pdf}', shell=True)
+
+graph         = mygraph_nul_on  + mygraph_read_and_write
+graph_red     = mygraph_red_on  + mygraph_read_and_write
+graph_ack     = mygraph_nul_ack + mygraph_read_and_write    
+graph_ack_red = mygraph_red_ack + mygraph_read_and_write
+
+
+# FIXME need a catch here or something because in general this will not work!!!
+makedot("build/graph",         graph)
+makedot("build/graph_red",     graph_red)
+makedot("build/graph_ack",     graph_ack)
+makedot("build/graph_ack_red", graph_ack_red)
+
+
+
+# @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
+@pytest.mark.parametrize('base', [SRAMSingle])
 
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
@@ -91,66 +190,6 @@ else:
 # def test_state_machine_fault():
 def test_state_machine_fault(base, mixins, params):
 
-    ##############################################################################
-    # Each SRAM variant needs a different state machine to test it
-
-    # Convenient abbrev
-    ANY = Command.NoCommand
-
-    # Basic state machine common to all SRAM configurations
-    # Covers MemOn state and its children (read and write)
-    mygraph_read_and_write = (
-        (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-        (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-        (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-        (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-        (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-        (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-        (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
-    )
-
-    # MemInit => MemOff => MemOn
-    # - for SRAMs w/ no redundancy and no wake ack
-    mygraph_nul_on = (
-        (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
-    )
-
-    # MemInit => MemOff => SendAck => MemOn
-    # - for SRAMs w/ wake ack and no redundancy
-    mygraph_nul_ack = (
-        (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-        (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-    )
-
-    mygraph_nul_ack = (
-        (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-        (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-
-        (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
-        (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
-    )
-
-
-    # MemInit => GetRedundancy => MemOff => MemOn
-    # - for SRAMs w/ redundancy and no wake ack
-    mygraph_red_on = (
-        (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
-    )
-
-    # MemInit => GetRedundancy => MemOff => SendAck => MemOn
-    # - for SRAMs w/ redundancy and wake ack
-    mygraph_red_ack = (
-        (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-        (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SendAck),
-        (State.SendAck,   ANY,                Action.SendAck,       State.MemOn),
-
-        (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
-        (State.DeepSleep, ANY,                Action.DeepSleep,     State.MemOff),
-    )
 
     ##############################################################################
     # Assign graphs per SRAM variant
@@ -458,6 +497,27 @@ def test_state_machine_fault(base, mixins, params):
         ########################################################################
 
 
+        prlog0("Check transition MemOff => TotalRetention => MemOff on command TotalRetention 752\n")
+        ########################################################################
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => TotalRetention on command TotalRetention 752\n")
+        check_transition(Command.TotalRetention, State.TotalRetention)
+        prlog9("successfully arrived in state TotalRetention\n")
+        ########################################################################
+
+        wantdata = 0
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
+        get_and_check_dtc_data(wantdata)
+        cycle()
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0(f"  - and now we should be in state MemOff (0x{int(State.MemOff)})\n")
+        tester.circuit.current_state.expect(State.MemOff)
+        prlog9("  CORRECT!\n")
+        ########################################################################
+
+
 
 
 
@@ -617,3 +677,27 @@ def test_state_machine_fault(base, mixins, params):
     print("""To read fault-test log:
     cat tmpdir/obj_dir/StateMachine.log | sed 's/beep/\\
 beep/g'    """)
+    #
+    #
+
+
+
+
+#     set f = foo
+#     dot $f.dot -Tpdf > $f.pdf
+#     pdfjam --scale 0.8 --landscape $f.pdf -o $f.jam
+#     echo lp -d gala -h gala $f.jam
+#     xpdf $f.jam
+
+#     if not red and not ack:
+#         graph = mygraph_nul_on + mygraph_read_and_write
+# 
+#     if red and not ack:
+#         graph = mygraph_red_on + mygraph_read_and_write
+# 
+#     if not red and ack:
+#         graph = mygraph_nul_ack + mygraph_read_and_write    
+# 
+#     if red and ack:
+#         graph = mygraph_red_ack + mygraph_read_and_write
+
