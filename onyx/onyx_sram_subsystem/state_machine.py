@@ -74,11 +74,10 @@ class Action(m.Enum):
     NoAction      = 0
     GetCommand    = 1
     GetRedundancy = 2
-    SendAck       = 3
-    GetAddr       = 4
-    ReadData      = 5
-    WriteData     = 6
-    SetMode       = 7
+    GetAddr       = 3
+    ReadData      = 4
+    WriteData     = 5
+    SetMode       = 6
 
 
 # FIXME Argh try as I might, could not make this work as m.Enum :(
@@ -93,7 +92,7 @@ class State():
 
     MemInit   = m.Bits[nbits](i); i=i+1 # 0
     MemOff    = m.Bits[nbits](i); i=i+1 # 1
-    SetMode   = m.Bits[nbits](i); i=i+1 # 2 UNUSED???
+    SetMode   = m.Bits[nbits](i); i=i+1 # 2
     MemOn     = m.Bits[nbits](i); i=i+1 # 3
     ReadAddr  = m.Bits[nbits](i); i=i+1 # 4
     ReadData  = m.Bits[nbits](i); i=i+1 # 5
@@ -132,7 +131,7 @@ def match_enum(enum_class, enum_value):
 #     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
 #     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
 #     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-#     (State.SetMode,   ANY,                Action.SendAck,       State.MemOn),
+#     (State.SetMode,   ANY,                Action.SetMode,       State.MemOn),
 #     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
 #     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
 #     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
@@ -185,11 +184,11 @@ class StateMachineGraph():
         # 
         #     digraph Diagram { node [shape=box];
         #       "MemInit"   -> "MemOff"    [label="GetRedundancy()"];
-        #       "MemOff"    -> "SendAck"   [label="PowerOn"];
+        #       "MemOff"    -> "SetMode"   [label="PowerOn"];
         #       "MemOn"     -> "MemOff"    [label="PowerOff"];
         #       "MemOn"     -> "ReadAddr"  [label="Read"];
         #       "MemOn"     -> "WriteAddr" [label="Write"];
-        #       "SendAck"   -> "MemOn"     [label="SendAck()"];
+        #       "SetMode"   -> "MemOn"     [label="SetMode()"];
         #       "ReadAddr"  -> "ReadData"  [label="GetAddr()"];
         #       "WriteAddr" -> "WriteData" [label="GetAddr()"];
         #       "WriteData" -> "MemOn"     [label="WriteData()"];
@@ -405,7 +404,7 @@ class StateMachine(CoopGenerator):
     #         self.mem.deep_sleep @= hw.Bit(0)
     #         self.mem.power_gate @= hw.Bit(0)
 
-    def send_wake_ack(self, cur_state, cond, cur_cmd=Command.NoCommand):
+    def send_wake_ack(self, cond, cur_state, cur_cmd=Command.NoCommand):
 
         # All active high
         ENABLE = True
@@ -723,25 +722,6 @@ class StateMachine(CoopGenerator):
                     ready_for_dfc = ~READY   # Got data, not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state)
 
-            # State.MemOff + Command.PowerOn => State.SetMode => Action.SendAck()
-            elif next_action == Action.SendAck:
-
-                # self.power_on()
-                ds = hw.Bit(0); pg = hw.Bit(0)
-
-                # Setup
-                # data_to_client = self.send_wake_ack()
-                # dtc READY means they got the data and we can all move on
-                (
-                    data_to_client, 
-                    dtc_valid,
-                    dtc_enable,
-                    next_state,
-                ) = self.send_wake_ack(
-                    cur_state,
-                    dtc.is_ready() & self.got_wake_ack(m.Bits[1](1)),
-                )
-
             # State MemOn: GONE!!! See far below for old State MemOn
 
             # State ReadAddr
@@ -765,7 +745,7 @@ class StateMachine(CoopGenerator):
                     next_state = self.smg.get_next_state(cur_state)
 
 
-            # State.MemOff + Command.PowerOn => State.SetMode => Action.SendAck()
+            # State.MemOff + Command.PowerOn => State.SetMode => Action.SetMode()
             elif next_action == Action.SetMode:
 
                 command = Command.NoCommand
@@ -786,9 +766,8 @@ class StateMachine(CoopGenerator):
                     dtc_enable,
                     next_state,
                 ) = self.send_wake_ack(
-                    cur_state,
-                    # dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
                     dtc.is_ready() & self.got_wake_ack(ack),
+                    cur_state,
                     cur_cmd=cfc.data,
                 )
 

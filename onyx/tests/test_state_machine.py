@@ -152,8 +152,14 @@ makedot("build/graph_red",     graph_red)
 makedot("build/graph_ack",     graph_ack)
 makedot("build/graph_ack_red", graph_ack_red)
 
-@pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
-# @pytest.mark.parametrize('base', [SRAMSingle])
+quicktest = True
+quicktest = False
+
+if quicktest: singledouble = [SRAMSingle]
+else:         singledouble = [SRAMSingle, SRAMDouble]
+
+@pytest.mark.parametrize('base', singledouble)
+
 
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
@@ -319,6 +325,41 @@ def test_state_machine_fault(base, mixins, graph, params):
         # reset ready signal i guess
         tester.circuit.send_ready = ~READY
 
+
+    def setmode(cname, cmd, mstate, want_ack):
+        '''FIXME add descriptive comment here'''
+
+        if want_ack == 0: (final_str, final) = ("MemOff", State.MemOff)
+        else:             (final_str, final) = ("MemOn",  State.MemOn)
+
+        prlog0("-----------------------------------------------\n")
+        prlog0(f"Check transition MemOff => SetMode => {final_str} on command {cname} 465\n")
+        check_transition(cmd, State.SetMode)
+
+        prlog9("  - successfully arrived in state SetMode\n")
+        tester.circuit.current_state.expect(State.SetMode)
+
+        prlog0(f"  - verify SRAM state = {cname}\n")
+        mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+        mock_ckt.current_state.expect(mstate)
+
+        prlog0(f"  - check that MC sent WakeAck data '{want_ack}'\n")
+        get_and_check_dtc_data(want_ack)
+        cycle()
+
+        if want_ack == 0:
+            prlog0(f"  - and now we should be in state MemOff (0x{int(State.MemOff)})\n")
+            tester.circuit.current_state.expect(State.MemOff)
+        else:
+            prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
+            tester.circuit.current_state.expect(State.MemOn)
+
+        prlog0(f"  - and now we should be in state {final_str} (0x{int(final)})\n")
+        tester.circuit.current_state.expect(final)
+
+        prlog9("  CORRECT!\n")
+
+
     def write_sram(addr, data, dbg=True):
         ''' Assuming MC is in state MemOn, write "data" to "addr" '''
 
@@ -413,10 +454,10 @@ def test_state_machine_fault(base, mixins, graph, params):
     tester.circuit.current_state.expect(State.MemInit)
     prlog0("-----------------------------------------------\n")
     prlog0("Successfully booted in state MemInit maybe\n")
-    prlog0("  - sending redundancy data to MC\n")
 
 
     if has_redundancy:
+        prlog0("  - sending redundancy data to MC\n")
         ########################################################################
         # rdata = 17
         # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
@@ -441,90 +482,37 @@ def test_state_machine_fault(base, mixins, graph, params):
     prlog9("successfully arrived in state MemOff\n")
 
 
+    # Check all the MemOff modes, ending at MemOn
     if needs_wake_ack:
 
         # needs_wake_ack means we have an SRAM with multiple possible states
         # e.g. DeepSleep, Normal, etc.
-        mock_state = getattr(tester.circuit, mock_name).current_state
 
-        prlog0("Check transition MemOff => DeepSleep => MemOff on command DeepSleep 465\n")
-        ########################################################################
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => DeepSleep on command DeepSleep 468\n")
-        check_transition(Command.DeepSleep, State.SetMode)
-        prlog9("successfully arrived in state DeepSleep\n")
-        ########################################################################
-
-        prlog0("  - verify SRAM state = DeepSleep\n")
-        mock_state.expect(SRAMModalMixin.State.DeepSleep)
-
-        wantdata = 0
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
-        get_and_check_dtc_data(wantdata)
-        cycle()
-        ########################################################################
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - and now we should be in state MemOff (0x{int(State.MemOff)})\n")
-        tester.circuit.current_state.expect(State.MemOff)
-        prlog9("  CORRECT!\n")
-        ########################################################################
-
-        prlog0("Check transition MemOff => TotalRetention => MemOff on command TotalRetention 491\n")
-        ########################################################################
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => TotalRetention on command TotalRetention 494\n")
-        check_transition(Command.TotalRetention, State.SetMode)
-        prlog9("successfully arrived in state TotalRetention\n")
-        ########################################################################
-
-        prlog0("  - verify SRAM state = TotalRetention\n")
-        mock_state.expect(SRAMModalMixin.State.TotalRetention)
-
-        wantdata = 0
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
-        get_and_check_dtc_data(wantdata)
-        cycle()
-        ########################################################################
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - and now we should be in state MemOff (0x{int(State.MemOff)})\n")
-        tester.circuit.current_state.expect(State.MemOff)
-        prlog9("  CORRECT!\n")
-        ########################################################################
-
-
-
-        # memoff => sendack => memon has to happen all together
-        ########################################################################
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 528\n")
-        check_transition(Command.PowerOn, State.SetMode)
-        prlog9("successfully arrived in state SendAck\n")
-        ########################################################################
-        WAKE_ACK_TRUE = 1
-
-        prlog0("  - verify SRAM state = Normal\n")
-        mock_state.expect(SRAMModalMixin.State.Normal)
-
-        wantdata = WAKE_ACK_TRUE
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
-        get_and_check_dtc_data(wantdata)
-        cycle()
-        ########################################################################
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
-        tester.circuit.current_state.expect(State.MemOn)
-        prlog9("  CORRECT!\n")
-        ########################################################################
+        setmode(
+            "DeepSleep",
+            Command.DeepSleep,
+            SRAMModalMixin.State.DeepSleep,
+            want_ack=0,
+        )
+        setmode(
+            "TotalRetention",
+            Command.TotalRetention,
+            SRAMModalMixin.State.TotalRetention,
+            want_ack=0,
+        )
+        setmode(
+            "PowerOn",
+            Command.PowerOn,
+            SRAMModalMixin.State.Normal,
+            want_ack=1,
+        )
+        # FIXME should add final mode "Retention" someday haha
 
     else:
         prlog0("-----------------------------------------------\n")
         prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
         check_transition(Command.PowerOn, State.MemOn)
         prlog9("successfully arrived in state MemOn\n")
-
 
 
     ########################################################################
@@ -533,59 +521,9 @@ def test_state_machine_fault(base, mixins, graph, params):
     check_transition(Command.Idle, State.MemOn)
     prlog9("successfully arrived in state MemOn\n")
 
+
     ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("Check transition MemOn => MemOff on command PowerOff\n")
-    check_transition(Command.PowerOff, State.MemOff)
-    prlog9("successfully arrived in state MemOff\n")
-
-
-    # TODO/FIXME here and above, replace with def power_on() or something
-    if needs_wake_ack:
-
-        # memoff => sendack => memon has to happen all together
-        # FIXME consider making this a method/function/subroutine or whatever tf
-        ########################################################################
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => SendAck => MemOn on command PowerOn 944\n")
-        check_transition(Command.PowerOn, State.SetMode)
-        prlog9("successfully arrived in state SendAck\n")
-        ########################################################################
-        wantdata = int(WAKE_ACK_TRUE)
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - check that MC sent WakeAck data '{wantdata}'\n")
-        get_and_check_dtc_data(wantdata)
-        cycle()
-        ########################################################################
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - and now we should be in state MemOn (0x{int(State.MemOn)})\n")
-        tester.circuit.current_state.expect(State.MemOn)
-        prlog9(f"  - CORRECT!\n")
-        ########################################################################
-    else:
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
-        check_transition(Command.PowerOn, State.MemOn)
-        prlog9("successfully arrived in state MemOn\n")
-
-
-
-
-#     ########################################################################
-#     read_sram(addr=0x66, expect_data=0x1066)
-# 
-# 
-#     ########################################################################
-#     prlog9("-----------------------------------------------\n")
-#     prlog0("Verify *still* in state MemOn\n")
-#     tester.circuit.current_state.expect(State.MemOn)
-#     prlog9("...CORRECT!\n")
-# 
-# 
-#     ########################################################################
-#     write_sram(addr=0x88, data=0x1088)
-
-
+    # Write and read two random locations in the SRAM
 
     prlog0("-----------------------------------------------\n")
     write_sram(addr=0x33, data=       0x1033)
@@ -595,12 +533,16 @@ def test_state_machine_fault(base, mixins, graph, params):
     write_sram(addr=0x88, data=       0x1088)
     read_sram( addr=0x88, expect_data=0x1088)
 
+
+    ########################################################################
+    # Write and read first and last n location of the SRAM
+
     # Takes way too long to do all 2K addresses...so...
     # ...just do first four and last four
     def print_region(i): return (i <= 0x3) or (i >= 0x7fc)
 
     prlog0("-----------------------------------------------\n")
-    prlog0("# For i = 0 to MAX_ADDR, write i => SRAM[i]\n")
+    prlog0("# For i = 0 to MAX_ADDR, write i => SRAM[i] (first and last four only)\n")
     # For i = 0 to MAX_ADDR, write i => SRAM[i]
     for i in range( 1 << SRAM_ADDR_WIDTH ):
         if not print_region(i): continue
@@ -608,12 +550,22 @@ def test_state_machine_fault(base, mixins, graph, params):
         if i==0x3: prlog0("...\n")
 
     prlog0("-----------------------------------------------\n")
-    prlog0("# For i = 0 to MAX_ADDR, read SRAM[i] =? i\n")
+    prlog0("# For i = 0 to MAX_ADDR, read SRAM[i] =? i (first and last four only)\n")
     # For i = 0 to MAX_ADDR, read SRAM[i] =? i
     for i in range( 1 << SRAM_ADDR_WIDTH ):
         if not print_region(i): continue
         read_sram(addr=i, expect_data=i, dbg=print_region(i) )
         if i==0x3: prlog0("...\n")
+
+
+    ########################################################################
+    # Turn it off
+    ########################################################################
+    prlog9("-----------------------------------------------\n")
+    prlog0("Check transition MemOn => MemOff on command PowerOff\n")
+    check_transition(Command.PowerOff, State.MemOff)
+    prlog9("successfully arrived in state MemOff\n")
+
 
     prlog0("-----------------------------------------------\n")
     prlog0("PASSED ALL TESTS\n")
