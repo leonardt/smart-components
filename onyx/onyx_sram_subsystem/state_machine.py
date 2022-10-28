@@ -399,18 +399,13 @@ class StateMachine(CoopGenerator):
             self.redundancy_reg.I  @= w
             self.redundancy_reg.CE @= w2
 
-# No this does not work :(
-#     def power_on(self):
-#         if self.needs_wake_ack:
-#             self.mem.deep_sleep @= hw.Bit(0)
-#             self.mem.power_gate @= hw.Bit(0)
-# 
-#     def goto_deep_sleep(self):
-#         if self.needs_wake_ack:
-#             self.mem.deep_sleep @= hw.Bit(1)
-#             self.mem.power_gate @= hw.Bit(1)
+    # No this does not work :(
+    # def power_on(self):
+    #     if self.needs_wake_ack:
+    #         self.mem.deep_sleep @= hw.Bit(0)
+    #         self.mem.power_gate @= hw.Bit(0)
 
-    def send_wake_ack(self, cur_state, cond):
+    def send_wake_ack(self, cur_state, cond, cur_cmd=Command.NoCommand):
 
         # All active high
         ENABLE = True
@@ -422,10 +417,12 @@ class StateMachine(CoopGenerator):
             # cond HI means client is ready to receive wake_ack signal, so
             # can advance to next state and pull v/e low; else remain in
             # current state and signal ready/waiting for client ready (v/e hi)
+            new_state = self.smg.get_next_state(cur_state, command=cur_cmd)
 
-            next_state = cond.ite(self.smg.get_next_state(cur_state), cur_state)
-            v          = cond.ite(~VALID,                                 VALID)
-            e          = cond.ite(~ENABLE,                               ENABLE)
+            next_state = cond.ite(new_state, cur_state)
+            v          = cond.ite(~VALID,  VALID) 
+            e          = cond.ite(~ENABLE, ENABLE)
+
             return (m.bits(self.mem.wake_ack, 16), v, e, next_state)
 
         else:
@@ -771,6 +768,7 @@ class StateMachine(CoopGenerator):
             # State.MemOff + Command.PowerOn => State.SetMode => Action.SendAck()
             elif next_action == Action.SetMode:
 
+                command = Command.NoCommand
                 if cfc.data == Command.DeepSleep:
                     # self.goto_deep_sleep()
                     ds = hw.Bit(1); pg = hw.Bit(1); ack = m.Bits[1](0)
@@ -791,6 +789,7 @@ class StateMachine(CoopGenerator):
                     cur_state,
                     # dtc.is_ready() & self.got_wake_ack(m.Bits[1](0)),
                     dtc.is_ready() & self.got_wake_ack(ack),
+                    cur_cmd=cfc.data,
                 )
 
             # State WriteData is similar to ReadAddr/WriteAddr

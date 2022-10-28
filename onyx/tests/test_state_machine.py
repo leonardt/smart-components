@@ -79,7 +79,7 @@ ANY = Command.NoCommand
 
 # Basic state machine common to all SRAM configurations
 # Covers MemOn state and its children (read and write)
-mygraph_read_and_write = (
+sm_read_and_write = (
     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
@@ -89,51 +89,40 @@ mygraph_read_and_write = (
     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
 )
 
-# MemInit => MemOff => MemOn
-# - for SRAMs w/ no redundancy and no wake ack
-mygraph_nul_on = (
+# Init, no redundancy
+sm_init = (
     (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+)
+
+# Init for SRAMs with redundancy
+sm_init_red = (
+    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+)
+
+# MemOn for plain SRAMs
+sm_memoff = (
     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
 )
 
-# MemInit => MemOff => SendAck => MemOn
-# - for SRAMs w/ wake ack and no redundancy
-mygraph_nul_ack = (
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+# MemOn for SRAMs with multiple modes
+sm_memoff_ack = (
     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
-    (State.SetMode,   ANY,                Action.SendAck,       State.MemOn),
+    (State.SetMode,   Command.PowerOn,    Action.SetMode,       State.MemOn),
 
-    (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
-    (State.DeepSleep, ANY,                Action.SetMode,       State.MemOff),
+    (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.SetMode),
+    (State.SetMode,   Command.DeepSleep,  Action.SetMode,       State.MemOff),
 
-    (State.MemOff,    Command.TotalRetention,  Action.GetCommand, State.TotalRetention),
-    (State.TotalRetention, ANY,                Action.SetMode,    State.MemOff),
+    (State.MemOff,    Command.TotalRetention,  Action.GetCommand, State.SetMode),
+    (State.SetMode,   Command.TotalRetention,  Action.SetMode,    State.MemOff),
 )
 
+# Prep a state machine for each different SRAM variety
+graph_plain   = sm_init     + sm_read_and_write + sm_memoff
+graph_red     = sm_init_red + sm_read_and_write + sm_memoff
+graph_ack     = sm_init     + sm_read_and_write + sm_memoff_ack
+graph_ack_red = sm_init_red + sm_read_and_write + sm_memoff_ack
 
-# MemInit => GetRedundancy => MemOff => MemOn
-# - for SRAMs w/ redundancy and no wake ack
-mygraph_red_on = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
-)
-
-# MemInit => GetRedundancy => MemOff => SendAck => MemOn
-# - for SRAMs w/ redundancy and wake ack
-mygraph_red_ack = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
-    (State.SetMode,   ANY,                Action.SendAck,       State.MemOn),
-
-    (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.DeepSleep),
-    (State.DeepSleep, ANY,                Action.SetMode,  State.MemOff),
-
-    (State.MemOff,    Command.TotalRetention,  Action.GetCommand,    State.TotalRetention),
-    (State.TotalRetention, ANY,                Action.SetMode,  State.MemOff),
-)
-
-
-# makedot("build/SMM", mygraph_nul_on + mygraph_read_and_write)
+# makedot("build/SMM", sm_init + sm_read_and_write)
 def makedot(filename, graph):
 
     # from onyx_sram_subsystem.state_machine import build_dot_graph
@@ -157,18 +146,11 @@ def makedot(filename, graph):
     # FIXME need a catch here or something because in general this will not work!!!
     subprocess.run(f'dot {filename_dot} -Tpdf > {filename_pdf}', shell=True)
 
-graph         = mygraph_nul_on  + mygraph_read_and_write
-graph_red     = mygraph_red_on  + mygraph_read_and_write
-graph_ack     = mygraph_nul_ack + mygraph_read_and_write    
-graph_ack_red = mygraph_red_ack + mygraph_read_and_write
-
-
-makedot("build/graph",         graph)
+# Build all four dot-graphs
+makedot("build/graph",         graph_plain)
 makedot("build/graph_red",     graph_red)
 makedot("build/graph_ack",     graph_ack)
 makedot("build/graph_ack_red", graph_ack_red)
-
-
 
 @pytest.mark.parametrize('base', [SRAMSingle, SRAMDouble])
 # @pytest.mark.parametrize('base', [SRAMSingle])
@@ -178,7 +160,7 @@ makedot("build/graph_ack_red", graph_ack_red)
 @pytest.mark.parametrize(
     'mixins,                                  graph,           params',
   [
-    ((),                                      (graph),         {},                  ),
+    ((),                                      (graph_plain),   {},                  ),
     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
@@ -469,7 +451,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         ########################################################################
         prlog0("-----------------------------------------------\n")
         prlog0("Check transition MemOff => DeepSleep on command DeepSleep 468\n")
-        check_transition(Command.DeepSleep, State.DeepSleep)
+        check_transition(Command.DeepSleep, State.SetMode)
         prlog9("successfully arrived in state DeepSleep\n")
         ########################################################################
 
@@ -492,7 +474,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         ########################################################################
         prlog0("-----------------------------------------------\n")
         prlog0("Check transition MemOff => TotalRetention on command TotalRetention 494\n")
-        check_transition(Command.TotalRetention, State.TotalRetention)
+        check_transition(Command.TotalRetention, State.SetMode)
         prlog9("successfully arrived in state TotalRetention\n")
         ########################################################################
 
