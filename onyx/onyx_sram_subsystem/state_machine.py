@@ -65,19 +65,22 @@ class Command(m.Enum):
     Read     = 3
     Write    = 4
     Idle     = 5
-    DeepSleep      = 6
-    TotalRetention = 7
-    Retention      = 8
+    RedOn    = 6    # Turn on redundancy
+    RedOff   = 7    # Turn off Redundancy
+    DeepSleep      = 8
+    TotalRetention = 9
+    Retention      = 10
 
 
 class Action(m.Enum):
     NoAction      = 0
     GetCommand    = 1
-    GetRedundancy = 2
+    GetRedundancy = 2  # Deprecated? FIXME
     GetAddr       = 3
     ReadData      = 4
     WriteData     = 5
-    SetMode       = 6
+    SetMode       = 6  # Deep sleep, retention, etc.
+    RedMode       = 7  # Redundancy ON or OFF
 
 
 # FIXME Argh try as I might, could not make this work as m.Enum :(
@@ -682,67 +685,27 @@ class StateMachine(CoopGenerator):
 
 
             # State.MemInit => Action.GetRedundancy()
-            elif next_action == Action.GetRedundancy:
 
-                # Enable regs
-                redundancy_reg_enable = ENABLE
+            # Turn redundancy mode ON or OFF
+            elif next_action == Action.RedMode:
 
-                # Get redundancy info from client/testbench
-                # If successful, go to next_state
+                command = Command.NoCommand  # default
 
-                ready_for_dfc = READY        # Ready for new data
-                dfc_enable = ENABLE
+                if cfc.data == Command.RedOn:
+                    redundancy_data = m.Bits[self.n_redundancy_bits](-1)
 
-                if dfc.is_valid():
+                elif cfc.data == Command.RedOff:
+                    redundancy_data = m.Bits[self.n_redundancy_bits](0)
 
-                    # FIXME need better way to wrap up all this
-                    # SRAM-specific redundancy stuff---like n_redundancy_bits :(
+                self.connect_RCE(redundancy_data)
 
-                    # redundancy_data = dfc.data[0:2]
-                    # redundancy_data = dfc.data[0:1]
-                    redundancy_data = dfc.data[0:self.n_redundancy_bits]
+                # Huh this seems to work???
+                # FIXME/TODO move this up to a better place, make sure it still works...
+                connect_RCFs(self.mem)
 
-                    # Using jimmied-up data
-                    # ncols = SRAM_params['num_r_cols']
-                    # self.mem.RCE @= hw.BitVector[ncols](-1)
-
-                    # Using data from user
-                    # self.mem.RCE @= redundancy_data
-                    self.connect_RCE(redundancy_data)
-
-                    # Want to do:
-                    #   nbits = m.bitutils.clog2safe(ncols)
-                    #   self.mem.RCF0A @= hw.BitVector[nbits](0)
-                    #   self.mem.RCF1A @= hw.BitVector[nbits](1)
-
-                    # Huh this seems to work???
-                    # FIXME/TODO move this up to a better place, make sure it still works...
-                    connect_RCFs(self.mem)
-
-                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = self.smg.get_next_state(cur_state)
-
-            # State MemOn: GONE!!! See far below for old State MemOn
-
-            # State ReadAddr
-            elif next_action == Action.GetAddr:
-
-                # Don't know yet if address will be used for READ or WRITE
-                SRAM_re = m.Enable(1)
-                SRAM_we = m.Enable(1)
-
-                # Setup
-                dfc_enable         = ENABLE
-                addr_to_mem_enable = ENABLE
-
-                # Get read-address info from client/testbench
-                # If successful, go to state ReadData
-
-                ready_for_dfc = READY        # Ready for new data
-                if dfc.is_valid():
-                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
-                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = self.smg.get_next_state(cur_state)
+                # ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                # Should be MemOff I think
+                next_state = self.smg.get_next_state(cur_state)
 
 
             # State.MemOff + Command.PowerOn => State.SetMode => Action.SetMode()
@@ -770,6 +733,27 @@ class StateMachine(CoopGenerator):
                     cur_state,
                     cur_cmd=cfc.data,
                 )
+
+            # State ReadAddr
+            elif next_action == Action.GetAddr:
+
+                # Don't know yet if address will be used for READ or WRITE
+                SRAM_re = m.Enable(1)
+                SRAM_we = m.Enable(1)
+
+                # Setup
+                dfc_enable         = ENABLE
+                addr_to_mem_enable = ENABLE
+
+                # Get read-address info from client/testbench
+                # If successful, go to state ReadData
+
+                ready_for_dfc = READY        # Ready for new data
+                if dfc.is_valid():
+                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
+                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
+                    next_state = self.smg.get_next_state(cur_state)
+
 
             # State WriteData is similar to ReadAddr/WriteAddr
             elif next_action == Action.WriteData:

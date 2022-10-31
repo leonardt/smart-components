@@ -96,7 +96,9 @@ sm_init = (
 
 # Init for SRAMs with redundancy
 sm_init_red = (
-    (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
+    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+    (State.MemOff,    Command.RedOn,      Action.RedMode,       State.MemOff),
+    (State.MemOff,    Command.RedOff,     Action.RedMode,       State.MemOff),
 )
 
 # MemOn for plain SRAMs
@@ -175,6 +177,8 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
   ]
 )
 
+# FIXME/TODO can break this up into multiple tests see e.g.
+# test_mock_mem.py test_sram(), test_redundancy(),  etc.
 def test_state_machine_fault(base, mixins, graph, params):
 
     ##############################################################################
@@ -455,20 +459,7 @@ def test_state_machine_fault(base, mixins, graph, params):
     prlog0("-----------------------------------------------\n")
     prlog0("Successfully booted in state MemInit maybe\n")
 
-
-    if has_redundancy:
-        prlog0("  - sending redundancy data to MC\n")
-        ########################################################################
-        # rdata = 17
-        # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
-        rdata = -1
-
-        prlog9("-----------------------------------------------\n")
-        prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
-        send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
-
-    else:
-        cycle()
+    cycle()
 
     ########################################################################
     prlog9("-----------------------------------------------\n")
@@ -480,6 +471,55 @@ def test_state_machine_fault(base, mixins, graph, params):
     prlog0("Check transition MemOff => MemOff on command PowerOff\n")
     check_transition(Command.PowerOff, State.MemOff)
     prlog9("successfully arrived in state MemOff\n")
+
+
+
+    # Try turning redundancy on and off i guess
+
+    if has_redundancy:
+        prlog0("-----------------------------------------------\n")
+        prlog0("Turn on redundancy, remain in state MemOff\n")
+        check_transition(Command.RedOn, State.MemOff)
+
+        # FIXME/TODO
+        prlog0("  - TODO verify that redundancy is ON\n")
+
+        prlog0("  - and now we should be in state Memoff\n")
+        tester.circuit.current_state.expect(State.MemOff)
+
+
+        prlog0("-----------------------------------------------\n")
+        prlog0("Turn on redundancy, remain in state MemOff\n")
+        check_transition(Command.RedOff, State.MemOff)
+
+        # FIXME/TODO
+        prlog0("  - TODO verify that redundancy is OFF\n")
+
+        prlog0("  - and now we should be in state Memoff\n")
+        tester.circuit.current_state.expect(State.MemOff)
+
+
+#         prlog0("  - sending redundancy data to MC\n")
+#         ########################################################################
+#         # rdata = 17
+#         # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
+#         rdata = -1
+# 
+#         prlog9("-----------------------------------------------\n")
+#         prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
+#         send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     # Check all the MemOff modes, ending at MemOn
@@ -513,6 +553,15 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
         check_transition(Command.PowerOn, State.MemOn)
         prlog9("successfully arrived in state MemOn\n")
+
+
+
+
+
+
+
+
+
 
 
     ########################################################################
