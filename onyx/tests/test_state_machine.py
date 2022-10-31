@@ -97,8 +97,8 @@ sm_init = (
 # Init for SRAMs with redundancy
 sm_init_red = (
     (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-    (State.MemOff,    Command.RedOn,      Action.RedMode,       State.MemOff),
-    (State.MemOff,    Command.RedOff,     Action.RedMode,       State.MemOff),
+    (State.MemOn,     Command.RedOn,      Action.RedMode,       State.MemOn),
+    (State.MemOn,     Command.RedOff,     Action.RedMode,       State.MemOn),
 )
 
 # MemOn for plain SRAMs
@@ -436,6 +436,75 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("...CORRECT!\n")
         cycle()
 
+    def initialize_memory():
+        '''boot memory and move from state MemInit to MemOff'''
+
+        prlog0("(tester data not valid yet so setting dfc valid=0)\n");
+        tester.circuit.receive_valid  = m.Bits[1](0)
+
+        prlog0("(offer not valid yet so setting offer_valid=0)\n");
+        tester.circuit.offer_valid = m.Bits[1](0)
+
+        ########################################################################
+        # Expect to start in state MemInit
+        tester.circuit.current_state.expect(State.MemInit)
+        prlog0("-----------------------------------------------\n")
+        prlog0("Successfully booted in state MemInit maybe\n")
+
+        cycle()
+
+        ########################################################################
+        prlog9("-----------------------------------------------\n")
+        prlog0("  - and now we should be in state Memoff\n")
+        tester.circuit.current_state.expect(State.MemOff)
+
+        ########################################################################
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOff => MemOff on command PowerOff\n")
+        check_transition(Command.PowerOff, State.MemOff)
+        prlog9("successfully arrived in state MemOff\n")
+
+
+    def check_memoff_modes(needs_wake_ack):
+        '''Check all the MemOff modes, ending at MemOn'''
+        if needs_wake_ack:
+
+            # needs_wake_ack means we have an SRAM with multiple possible states
+            # e.g. DeepSleep, Normal, etc.
+
+            setmode(
+                "DeepSleep",
+                Command.DeepSleep,
+                SRAMModalMixin.State.DeepSleep,
+                want_ack=0,
+            )
+            setmode(
+                "TotalRetention",
+                Command.TotalRetention,
+                SRAMModalMixin.State.TotalRetention,
+                want_ack=0,
+            )
+            setmode(
+                "PowerOn",
+                Command.PowerOn,
+                SRAMModalMixin.State.Normal,
+                want_ack=1,
+            )
+            # FIXME should add final mode "Retention" someday haha
+
+        else:
+            prlog0("-----------------------------------------------\n")
+            prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
+            check_transition(Command.PowerOn, State.MemOn)
+            prlog9("successfully arrived in state MemOn\n")
+
+        ########################################################################
+        prlog0("-----------------------------------------------\n")
+        prlog0("Check transition MemOn => MemOn on command Idle\n")
+        check_transition(Command.Idle, State.MemOn)
+        prlog9("successfully arrived in state MemOn\n")
+
+
 
     ########################################################################
     # BEGIN TEST
@@ -447,30 +516,12 @@ def test_state_machine_fault(base, mixins, graph, params):
     tester = fault.Tester(Definition, Definition.CLK)
     prlog0("TESTING STATE_MACHINE CIRCUIT\n")
 
-    prlog0("(tester data not valid yet so setting dfc valid=0)\n");
-    tester.circuit.receive_valid  = m.Bits[1](0)
+    # Initialize tester; boot memory and move from state MemInit to MemOff
+    initialize_memory()
 
-    prlog0("(offer not valid yet so setting offer_valid=0)\n");
-    tester.circuit.offer_valid = m.Bits[1](0)
+    # Check all the MemOff modes, ending at MemOn
+    check_memoff_modes(needs_wake_ack)
 
-    ########################################################################
-    # Expect to start in state MemInit
-    tester.circuit.current_state.expect(State.MemInit)
-    prlog0("-----------------------------------------------\n")
-    prlog0("Successfully booted in state MemInit maybe\n")
-
-    cycle()
-
-    ########################################################################
-    prlog9("-----------------------------------------------\n")
-    prlog0("  - and now we should be in state Memoff\n")
-    tester.circuit.current_state.expect(State.MemOff)
-
-    ########################################################################
-    prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOff => MemOff on command PowerOff\n")
-    check_transition(Command.PowerOff, State.MemOff)
-    prlog9("successfully arrived in state MemOff\n")
 
 
 
@@ -478,25 +529,25 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     if has_redundancy:
         prlog0("-----------------------------------------------\n")
-        prlog0("Turn on redundancy, remain in state MemOff\n")
-        check_transition(Command.RedOn, State.MemOff)
+        prlog0("Turn on redundancy, remain in state MemOn\n")
+        check_transition(Command.RedOn, State.MemOn)
 
         # FIXME/TODO
         prlog0("  - TODO verify that redundancy is ON\n")
 
         prlog0("  - and now we should be in state Memoff\n")
-        tester.circuit.current_state.expect(State.MemOff)
+        tester.circuit.current_state.expect(State.MemOn)
 
 
         prlog0("-----------------------------------------------\n")
-        prlog0("Turn on redundancy, remain in state MemOff\n")
-        check_transition(Command.RedOff, State.MemOff)
+        prlog0("Turn on redundancy, remain in state MemOn\n")
+        check_transition(Command.RedOff, State.MemOn)
 
         # FIXME/TODO
         prlog0("  - TODO verify that redundancy is OFF\n")
 
         prlog0("  - and now we should be in state Memoff\n")
-        tester.circuit.current_state.expect(State.MemOff)
+        tester.circuit.current_state.expect(State.MemOn)
 
 
 #         prlog0("  - sending redundancy data to MC\n")
@@ -515,60 +566,6 @@ def test_state_machine_fault(base, mixins, graph, params):
 
 
 
-
-
-
-
-
-
-
-    # Check all the MemOff modes, ending at MemOn
-    if needs_wake_ack:
-
-        # needs_wake_ack means we have an SRAM with multiple possible states
-        # e.g. DeepSleep, Normal, etc.
-
-        setmode(
-            "DeepSleep",
-            Command.DeepSleep,
-            SRAMModalMixin.State.DeepSleep,
-            want_ack=0,
-        )
-        setmode(
-            "TotalRetention",
-            Command.TotalRetention,
-            SRAMModalMixin.State.TotalRetention,
-            want_ack=0,
-        )
-        setmode(
-            "PowerOn",
-            Command.PowerOn,
-            SRAMModalMixin.State.Normal,
-            want_ack=1,
-        )
-        # FIXME should add final mode "Retention" someday haha
-
-    else:
-        prlog0("-----------------------------------------------\n")
-        prlog0("Check transition MemOff => MemOn on command PowerOn 752\n")
-        check_transition(Command.PowerOn, State.MemOn)
-        prlog9("successfully arrived in state MemOn\n")
-
-
-
-
-
-
-
-
-
-
-
-    ########################################################################
-    prlog0("-----------------------------------------------\n")
-    prlog0("Check transition MemOn => MemOn on command Idle\n")
-    check_transition(Command.Idle, State.MemOn)
-    prlog9("successfully arrived in state MemOn\n")
 
 
     ########################################################################
