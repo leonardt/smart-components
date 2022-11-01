@@ -154,8 +154,8 @@ makedot("build/graph_red",     graph_red)
 makedot("build/graph_ack",     graph_ack)
 makedot("build/graph_ack_red", graph_ack_red)
 
-quicktest = False
 quicktest = True
+quicktest = False
 
 if quicktest: singledouble = [SRAMSingle]
 else:         singledouble = [SRAMSingle, SRAMDouble]
@@ -171,9 +171,9 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
     ((),                                      (graph_plain),   {},                  ),
     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
-#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
-#     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
 )
 
@@ -507,6 +507,7 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     def check_redundancy_onoff():
         '''Try turning redundancy on and off i guess'''
+
         if has_redundancy:
             prlog0("-----------------------------------------------\n")
             prlog0("Turn on redundancy, remain in state MemOn\n")
@@ -540,6 +541,40 @@ def test_state_machine_fault(base, mixins, graph, params):
             #         prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
             #         send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
             
+    def readwrite_check_two_locations():
+        '''Write and read two random locations in the SRAM'''
+
+        prlog0("-----------------------------------------------\n")
+        write_sram(addr=0x33, data=       0x1033)
+        read_sram( addr=0x33, expect_data=0x1033)
+
+        prlog0("-----------------------------------------------\n")
+        write_sram(addr=0x88, data=       0x1088)
+        read_sram( addr=0x88, expect_data=0x1088)
+
+    def readwrite_first_and_last():
+        '''Write and read first and last n location of the SRAM'''
+
+        # Takes way too long to do all 2K addresses...so...
+        # ...just do first four and last four
+        def print_region(i): return (i <= 0x3) or (i >= 0x7fc)
+
+        prlog0("-----------------------------------------------\n")
+        prlog0("# For i = 0 to MAX_ADDR, write i => SRAM[i] (first and last four only)\n")
+        # For i = 0 to MAX_ADDR, write i => SRAM[i]
+        for i in range( 1 << SRAM_ADDR_WIDTH ):
+            if not print_region(i): continue
+            write_sram(addr=i, data=i, dbg=print_region(i) )
+            if i==0x3: prlog0("...\n")
+
+        prlog0("-----------------------------------------------\n")
+        prlog0("# For i = 0 to MAX_ADDR, read SRAM[i] =? i (first and last four only)\n")
+        # For i = 0 to MAX_ADDR, read SRAM[i] =? i
+        for i in range( 1 << SRAM_ADDR_WIDTH ):
+            if not print_region(i): continue
+            read_sram(addr=i, expect_data=i, dbg=print_region(i) )
+            if i==0x3: prlog0("...\n")
+
 
     ########################################################################
     # BEGIN TEST
@@ -557,46 +592,27 @@ def test_state_machine_fault(base, mixins, graph, params):
     # Check all the MemOff modes, ending at MemOn
     check_memoff_modes(needs_wake_ack)
 
+    # FIXME maybe don't need this test after real redundancy tests come in
     # Try turning redundancy on and off i guess
     check_redundancy_onoff()
 
-
-    # readwrite_check_two_locations()
-
-    ########################################################################
     # Write and read two random locations in the SRAM
-
-    prlog0("-----------------------------------------------\n")
-    write_sram(addr=0x33, data=       0x1033)
-    read_sram( addr=0x33, expect_data=0x1033)
-
-    prlog0("-----------------------------------------------\n")
-    write_sram(addr=0x88, data=       0x1088)
-    read_sram( addr=0x88, expect_data=0x1088)
-
-
-    ########################################################################
+    readwrite_check_two_locations()
+    
     # Write and read first and last n location of the SRAM
+    readwrite_first_and_last()
 
-    # Takes way too long to do all 2K addresses...so...
-    # ...just do first four and last four
-    def print_region(i): return (i <= 0x3) or (i >= 0x7fc)
+    # bookmark
+    # TODO extensive redundancy tests a la test_mock_mem
+    # enable redundancy on all columns
+    # Write 0 everywhere
+    # disable redundancy
+    # Write i everywhere
+    # enable redundancy
+    # read everything back
+    # the top bits should be 0,
+    # and the bottom bits should be the top bits
 
-    prlog0("-----------------------------------------------\n")
-    prlog0("# For i = 0 to MAX_ADDR, write i => SRAM[i] (first and last four only)\n")
-    # For i = 0 to MAX_ADDR, write i => SRAM[i]
-    for i in range( 1 << SRAM_ADDR_WIDTH ):
-        if not print_region(i): continue
-        write_sram(addr=i, data=i, dbg=print_region(i) )
-        if i==0x3: prlog0("...\n")
-
-    prlog0("-----------------------------------------------\n")
-    prlog0("# For i = 0 to MAX_ADDR, read SRAM[i] =? i (first and last four only)\n")
-    # For i = 0 to MAX_ADDR, read SRAM[i] =? i
-    for i in range( 1 << SRAM_ADDR_WIDTH ):
-        if not print_region(i): continue
-        read_sram(addr=i, expect_data=i, dbg=print_region(i) )
-        if i==0x3: prlog0("...\n")
 
 
     ########################################################################
