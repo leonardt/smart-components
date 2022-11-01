@@ -2,7 +2,7 @@
 # Importing things
 
 # import itertools as it
-# import hwtypes as hw
+import hwtypes as hw
 
 import pytest
 import fault
@@ -34,8 +34,16 @@ from onyx_sram_subsystem.state_machine import Action
 # SRAM setup
 
 # SRAM = 2K 16-bit words, just like garnet :)
-SRAM_ADDR_WIDTH = 11
-SRAM_DATA_WIDTH = 16
+# SRAM_ADDR_WIDTH = 11
+# SRAM_DATA_WIDTH = 16
+
+
+
+# Change to match test_mock_mem
+
+SRAM_ADDR_WIDTH = 8
+SRAM_DATA_WIDTH = 8
+
 
 ##############################################################################
 # Example build and show verilog functions
@@ -154,8 +162,8 @@ makedot("build/graph_red",     graph_red)
 makedot("build/graph_ack",     graph_ack)
 makedot("build/graph_ack_red", graph_ack_red)
 
-quicktest = True
 quicktest = False
+quicktest = True
 
 if quicktest: singledouble = [SRAMSingle]
 else:         singledouble = [SRAMSingle, SRAMDouble]
@@ -168,12 +176,12 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
 @pytest.mark.parametrize(
     'mixins,                                  graph,           params',
   [
-    ((),                                      (graph_plain),   {},                  ),
-    ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
+#     ((),                                      (graph_plain),   {},                  ),
+#     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
-    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
-    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
-    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
+#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+#     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
+#     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
 )
 
@@ -254,7 +262,8 @@ def test_state_machine_fault(base, mixins, graph, params):
 
         # Send dval to MC receive-queue as "DataFromClient" data
         prlog9("...sending data to controller L203\n")
-        tester.circuit.receive = m.Bits[16](dval)
+        # tester.circuit.receive = m.Bits[16](dval)
+        tester.circuit.receive = m.Bits[SRAM_DATA_WIDTH](dval)
         # prlog0("initreg is now %d (1)\n", tester.circuit.initreg.O)
 
         # Mark receive-queue (dfc/DataFromQueue) data "valid"
@@ -545,20 +554,23 @@ def test_state_machine_fault(base, mixins, graph, params):
         '''Write and read two random locations in the SRAM'''
 
         prlog0("-----------------------------------------------\n")
-        write_sram(addr=0x33, data=       0x1033)
-        read_sram( addr=0x33, expect_data=0x1033)
+        write_sram(addr=0x33, data=       0x33)
+        read_sram( addr=0x33, expect_data=0x33)
 
         prlog0("-----------------------------------------------\n")
-        write_sram(addr=0x88, data=       0x1088)
-        read_sram( addr=0x88, expect_data=0x1088)
+        write_sram(addr=0x88, data=       0x88)
+        read_sram( addr=0x88, expect_data=0x88)
 
     def readwrite_first_and_last():
         '''Write and read first and last n location of the SRAM'''
 
         # Takes way too long to do all 2K addresses...so...
         # ...just do first four and last four
-        def print_region(i): return (i <= 0x3) or (i >= 0x7fc)
+        def print_region(i):
+            MAX_ADDR = 1 << SRAM_ADDR_WIDTH 
+            return (i <= 0x3) or (i >= (MAX_ADDR-4))
 
+        # Write
         prlog0("-----------------------------------------------\n")
         prlog0("# For i = 0 to MAX_ADDR, write i => SRAM[i] (first and last four only)\n")
         # For i = 0 to MAX_ADDR, write i => SRAM[i]
@@ -567,6 +579,7 @@ def test_state_machine_fault(base, mixins, graph, params):
             write_sram(addr=i, data=i, dbg=print_region(i) )
             if i==0x3: prlog0("...\n")
 
+        # Read
         prlog0("-----------------------------------------------\n")
         prlog0("# For i = 0 to MAX_ADDR, read SRAM[i] =? i (first and last four only)\n")
         # For i = 0 to MAX_ADDR, read SRAM[i] =? i
@@ -594,24 +607,245 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     # FIXME maybe don't need this test after real redundancy tests come in
     # Try turning redundancy on and off i guess
-    check_redundancy_onoff()
+    # check_redundancy_onoff()
 
     # Write and read two random locations in the SRAM
-    readwrite_check_two_locations()
+    # readwrite_check_two_locations()
     
     # Write and read first and last n location of the SRAM
-    readwrite_first_and_last()
+    # readwrite_first_and_last()
 
-    # bookmark
-    # TODO extensive redundancy tests a la test_mock_mem
-    # enable redundancy on all columns
+    prlog0("-----------------------------------------------\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("-----------------------------------------------\n")
+    prlog0("THIS IS THE NEW STUFF\n")
+
+
+    mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+
+    # enable redundancy on the all columns
+    mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
+
+    for i in range(params['num_r_cols']):
+        setattr(
+            mock_ckt, f'RCF{i}A',
+            hw.BitVector[m.bitutils.clog2safe(MemDefinition.num_v_cols)](i)
+        )
+    mock_ckt.RCF0A.expect(0)
+
+    ADDR_WIDTH = SRAM_ADDR_WIDTH
+    DATA_WIDTH = SRAM_DATA_WIDTH
+
     # Write 0 everywhere
+    for i in range(1 << ADDR_WIDTH):
+        mock_ckt.CEn = hw.Bit(0)
+        mock_ckt.REn = hw.Bit(0)
+        mock_ckt.WEn = hw.Bit(1)
+        if base is SRAMSingle:
+            mock_ckt.ADDR = hw.BitVector[ADDR_WIDTH](i)
+        else:
+            mock_ckt.RADDR = hw.BitVector[ADDR_WIDTH](0)
+            mock_ckt.WADDR = hw.BitVector[ADDR_WIDTH](i)
+
+        mock_ckt.WDATA = hw.BitVector[DATA_WIDTH](0)
+        tester.step(2)
+
     # disable redundancy
+    mock_ckt.RCE = hw.BitVector[params['num_r_cols']](0)
+
+
     # Write i everywhere
+    for i in range(1 << ADDR_WIDTH):
+        mock_ckt.CEn = hw.Bit(0)
+        mock_ckt.REn = hw.Bit(0)
+        mock_ckt.WEn = hw.Bit(1)
+        if base is SRAMSingle:
+            mock_ckt.ADDR = hw.BitVector[ADDR_WIDTH](i)
+        else:
+            mock_ckt.RADDR = hw.BitVector[ADDR_WIDTH](0)
+            mock_ckt.WADDR = hw.BitVector[ADDR_WIDTH](i)
+
+        mock_ckt.WDATA = hw.BitVector[DATA_WIDTH](i)
+        tester.step(2)
+
     # enable redundancy
+    mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
+
     # read everything back
     # the top bits should be 0,
     # and the bottom bits should be the top bits
+    for i in range(1 << ADDR_WIDTH):
+        mock_ckt.CEn = hw.Bit(0)
+        mock_ckt.REn = hw.Bit(1)
+        mock_ckt.WEn = hw.Bit(0)
+        if base is SRAMSingle:
+            mock_ckt.ADDR = hw.BitVector[ADDR_WIDTH](i)
+        else:
+            mock_ckt.RADDR = hw.BitVector[ADDR_WIDTH](i)
+            mock_ckt.WADDR = hw.BitVector[ADDR_WIDTH](0)
+        mock_ckt.WDATA = hw.BitVector[DATA_WIDTH](0)
+        tester.step(2)
+
+        mock_ckt.RDATA.expect(
+            # hw.BitVector[DATA_WIDTH](i) >> Definition.col_width *
+            # Definition.num_r_cols
+
+            # hw.BitVector[DATA_WIDTH](i) >> 4
+
+            hw.BitVector[8](i) >> 4
+            # 0, 0, 0, ... 16(1), 16(2), ... 15, 15, 15
+        )
+        if i == 15: mock_ckt.RDATA.expect(0)
+        if i == 16: mock_ckt.RDATA.expect(1)
+        if i == 32: mock_ckt.RDATA.expect(2)
+        if i == 255: mock_ckt.RDATA.expect(15)
+
+
+
+
+# 
+# 
+# 
+#     ########################################################################
+#     # TODO extensive redundancy tests a la test_mock_mem
+# 
+#     if has_redundancy:
+# 
+#         mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+# 
+# 
+#         # test_mock_mem does this...
+#         #
+#         # for i in range(params['num_r_cols']):
+#         #     setattr(
+#         #         tester.circuit, f'RCF{i}A',
+#         #         hw.BitVector[m.bitutils.clog2safe(Definition.num_v_cols)](i)
+#         #     )
+# 
+#         # ...so I THINK should be RCF0A == 0
+#         prlog0("-----------------------------------------------\n")
+#         prlog0("I THINK should be RCF0A == 0 ??\n")
+#         mock_ckt.RCF0A.expect(0)
+# 
+# 
+#         # enable redundancy on all columns
+# #         prlog0("-----------------------------------------------\n")
+# #         prlog0("Turn on redundancy, remain in state MemOn\n")
+# #         check_transition(Command.RedOn, State.MemOn)
+# # 
+#         # tester.circuit.RCE = hw.BitVector[params['num_r_cols']](-1)
+#         mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
+#         
+#         for i in range(params['num_r_cols']):
+#             setattr(
+#                 # tester.circuit, f'RCF{i}A',
+#                 mock_ckt, f'RCF{i}A',
+#                 hw.BitVector[m.bitutils.clog2safe(MemDefinition.num_v_cols)](i)
+#             )
+#         # tester.circuit.RCF0A.expect(0)
+#         mock_ckt.RCF0A.expect(0)
+# 
+#         # Verify redundancy ON: (RCE = -1)
+#         prlog0(" - verify redundancy ON: RCE == -1 ?\n")
+#         mock_ckt.RCE.expect(-1)
+# 
+#         def print_region(i):
+#             MAX_ADDR = 1 << SRAM_ADDR_WIDTH 
+#             return (i <= 0x3) or (i >= (MAX_ADDR-4))
+# 
+#         # Write 0 everywhere
+#         prlog0("Write zeroes everywhere\n")
+#         for i in range( 1 << SRAM_ADDR_WIDTH ):
+#             if not print_region(i): continue
+#             write_sram(addr=i, data=0, dbg=print_region(i) )
+#             if i==0x3: prlog0("...\n")
+# 
+#         prlog0("check 1, zeroes everywhere\n")
+#         # For i = 0 to MAX_ADDR, read SRAM[i] =? i
+#         for i in range( 1 << SRAM_ADDR_WIDTH ):
+#             if not print_region(i): continue
+#             read_sram(addr=i, expect_data=0, dbg=print_region(i) )
+#             if i==0x3: prlog0("...\n")
+# 
+# 
+# 
+# #         # disable redundancy
+# #         prlog0("-----------------------------------------------\n")
+# #         prlog0("Turn off redundancy, remain in state MemOn\n")
+# #         check_transition(Command.RedOff, State.MemOn)
+# 
+#         mock_ckt.RCE = hw.BitVector[params['num_r_cols']](0)
+# 
+# 
+#         # Verify redundancy OFF: (RCE = 0)
+#         prlog0(" - verify redundancy OFF: RCE == 0 ?\n")
+#         # mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+#         mock_ckt.RCE.expect(0)
+# 
+# 
+#         # Write i everywhere
+#         prlog0("Write i everywhere\n")
+#         # For i = 0 to MAX_ADDR, write i => SRAM[i]
+#         for i in range( 1 << SRAM_ADDR_WIDTH ):
+#             if not print_region(i): continue
+#             write_sram(addr=i, data=i, dbg=print_region(i) )
+#             if i==0x3: prlog0("...\n")
+# 
+#         prlog0("check 2, i everywhere still\n")
+#         # For i = 0 to MAX_ADDR, read SRAM[i] =? i
+#         for i in range( 1 << SRAM_ADDR_WIDTH ):
+#             if not print_region(i): continue
+#             read_sram(addr=i, expect_data=i, dbg=print_region(i) )
+#             if i==0x3: prlog0("...\n")
+# 
+# 
+# 
+# #         # enable redundancy again
+# #         prlog0("-----------------------------------------------\n")
+# #         prlog0("Turn on redundancy, remain in state MemOn\n")
+# #         check_transition(Command.RedOn, State.MemOn)
+# 
+#         mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
+# 
+# 
+#         # Verify redundancy ON: (RCE = -1)
+#         prlog0(" - verify redundancy ON: RCE == -1 ?\n")
+#         mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+#         mock_ckt.RCE.expect(1)
+# 
+#         # read everything back
+#         # the top bits should be 0,
+#         # and the bottom bits should be the top bits
+# 
+#         prlog0("Read it back. Top bits should be zero, bottom bits should be top bits\n")
+#         # For i = 0 to MAX_ADDR, read SRAM[i] =? i
+#         for i in range( 1 << SRAM_ADDR_WIDTH ):
+#             if not print_region(i): continue
+#             read_sram(addr=i, expect_data=i, dbg=print_region(i) )
+#             if i==0x3: prlog0("...\n")
+# 
+# 
+#         ######################################################################
+# 
+#         # disable redundancy
+#         prlog0("-----------------------------------------------\n")
+#         prlog0("Turn off redundancy, remain in state MemOn\n")
+#         check_transition(Command.RedOff, State.MemOn)
+# 
+#         # Verify redundancy OFF: (RCE = 0)
+#         prlog0(" - verify redundancy OFF: RCE == 0 ?\n")
+#         mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+#         mock_ckt.RCE.expect(0)
+# 
+#         prlog0("Read it back. Top bits should be zero, bottom bits should be top bits\n")
+#         # For i = 0 to MAX_ADDR, read SRAM[i] =? i
+#         for i in range( 1 << SRAM_ADDR_WIDTH ):
+#             if not print_region(i): continue
+#             read_sram(addr=i, expect_data=i, dbg=print_region(i) )
+#             if i==0x3: prlog0("...\n")
+
+
+
 
 
 

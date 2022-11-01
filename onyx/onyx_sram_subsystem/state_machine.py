@@ -36,7 +36,8 @@ import hwtypes as hw
 debug("* Done importing python packages...")
 
 
-
+ADDR_WIDTH = 8
+DATA_WIDTH = 8
 
 
 #------------------------------------------------------------------------
@@ -361,7 +362,7 @@ def connect_RCFs_1col(ckt):
 
 # Use this one when SRAM_params = { 'num_r_cols': 2 }
 def connect_RCFs_2col(ckt):
-    nbits=1
+    nbits=2
     ckt.RCF0A @= hw.BitVector[nbits](0)
     ckt.RCF1A @= hw.BitVector[nbits](1)
 
@@ -392,14 +393,14 @@ class StateMachine(CoopGenerator):
             self.mem.power_gate @= pg
 
     def connect_RCE(self, w):
-        if self.has_redundancy:
+        # if self.has_redundancy:
             self.mem.RCE @= w
 
 
-    def connect_redundancy_signals(self, w, w2):
-        if self.has_redundancy:
-            self.redundancy_reg.I  @= w
-            self.redundancy_reg.CE @= w2
+    # def connect_redundancy_signals(self, w, w2):
+    #     if self.has_redundancy:
+    #         self.redundancy_reg.I  @= w
+    #         self.redundancy_reg.CE @= w2
 
     # No this does not work :(
     # def power_on(self):
@@ -425,11 +426,12 @@ class StateMachine(CoopGenerator):
             v          = cond.ite(~VALID,  VALID) 
             e          = cond.ite(~ENABLE, ENABLE)
 
-            return (m.bits(self.mem.wake_ack, 16), v, e, next_state)
+            return (m.bits(self.mem.wake_ack, DATA_WIDTH), v, e, next_state)
 
         else:
             # dummy values. does not compile w/out this else clause :(
-            return (m.Bits[16](0),                      VALID,  ENABLE, cur_state)
+            # return (m.Bits[16](0), VALID,  ENABLE, cur_state)
+            return (m.Bits[DATA_WIDTH](0), VALID,  ENABLE, cur_state)
 
 
     def got_wake_ack(self, expected_value):
@@ -491,7 +493,7 @@ class StateMachine(CoopGenerator):
         # dfcq = "data-from-client queue" (i.e. receive)
         # dtcq = "data-to-client queue" (i.e. send)
         self.io += m.IO(
-            receive       = m.In(m.Bits[16]),
+            receive       = m.In(m.Bits[DATA_WIDTH]),
             receive_valid = m.In(m.Bits[ 1]),
             receive_ready = m.Out(m.Bits[1]),
 
@@ -499,7 +501,7 @@ class StateMachine(CoopGenerator):
             offer_valid = m.In(m.Bits[1]),
             offer_ready = m.Out(m.Bits[1]),
 
-            send       = m.Out(m.Bits[16]),
+            send       = m.Out(m.Bits[DATA_WIDTH]),
             send_ready = m.In(m.Bits[1]),
             send_valid = m.Out(m.Bits[1]),
             # dtcq_valid = m.In(m.Bits[1]),  TBD
@@ -531,25 +533,25 @@ class StateMachine(CoopGenerator):
         # 
         # FIXME/TODO should not have to pass 'num_r_cols' as a
         # separate parameter, yes?
-        if self.has_redundancy:
-            ncols = self.num_r_cols
-            self.redundancy_reg = m.Register(
-                T=m.Bits[ncols],
-                has_enable=True,
-            )()
-            self.redundancy_reg.name = "redundancy_reg"
+        # if self.has_redundancy:
+        #     ncols = self.num_r_cols
+        #     self.redundancy_reg = m.Register(
+        #         T=m.Bits[ncols],
+        #         has_enable=True,
+        #     )()
+        #     self.redundancy_reg.name = "redundancy_reg"
 
         # mem_addr reg holds mem_addr data from ?client? for future ref
         # self.mem_addr_reg = reg("mem_addr_reg", nbits=16); # "mem_addr" reg
         self.mem_addr_reg = m.Register(
-            T=m.Bits[16],
+            T=m.Bits[DATA_WIDTH],
             has_enable=True,
         )()
         self.mem_addr_reg.name = "mem_addr_reg"
 
         # mem_data reg holds data from client for writing to SRAM
         self.mem_data_reg = m.Register(
-            T=m.Bits[16],
+            T=m.Bits[DATA_WIDTH],
             has_enable=True,
         )()
         self.mem_data_reg.name = "mem_data_reg"
@@ -578,14 +580,14 @@ class StateMachine(CoopGenerator):
 
         # NEW style comm
         self.DataFromClient = RcvQueue(
-            "DataFromClient", nbits=16, readyvalid=True,
+            "DataFromClient", nbits=DATA_WIDTH, readyvalid=True,
             data_in   = self.io.receive,
             valid_in  = self.io.receive_valid,
             ready_out = self.io.receive_ready,
         );
 
         self.DataToClient = XmtQueue(
-            "DataToClient", nbits=16, readyvalid=True,
+            "DataToClient", nbits=DATA_WIDTH, readyvalid=True,
             ready_in  = self.io.send_ready,
             valid_out = self.io.send_valid,
             data_out  = self.io.send,
@@ -616,7 +618,8 @@ class StateMachine(CoopGenerator):
                 # FIXME what? why?
                 # Seed SRAM_addr with any random value
                 # For some reason it breaks without this!!??
-                SRAM_addr  = m.Bits[11](0x6)
+                # SRAM_addr  = m.Bits[11](0x6)
+                SRAM_addr  = m.Bits[ADDR_WIDTH](0x6)
 
                 # So we only do this ONCE on start-up
                 init_next = m.Bits[1](0)
@@ -645,8 +648,8 @@ class StateMachine(CoopGenerator):
 
             # Reset reg-enable signals
 
-            if self.has_redundancy:
-                redundancy_reg_enable = ~ENABLE
+            # if self.has_redundancy:
+            #     redundancy_reg_enable = ~ENABLE
 
             addr_to_mem_enable    = ~ENABLE
             dtc_enable            = ~ENABLE
@@ -689,19 +692,24 @@ class StateMachine(CoopGenerator):
             # Turn redundancy mode ON or OFF
             elif next_action == Action.RedMode:
 
+                # redundancy_data = m.Bits[self.n_redundancy_bits](-1)
+
                 command = Command.NoCommand  # default
-
                 if cfc.data == Command.RedOn:
-                    redundancy_data = m.Bits[self.n_redundancy_bits](-1)
+                    # redundancy_data = m.Bits[self.n_redundancy_bits](-1)
+                    redundancy_data = m.Bits[1](-1)
 
+                    # Huh this seems to work???
+                    # FIXME/TODO move this up to a better place, make sure it still works...
+                    # connect_RCFs_1col(self.mem)
+                    self.mem.RCF0A @= hw.BitVector[1](0)
+
+
+                
                 elif cfc.data == Command.RedOff:
-                    redundancy_data = m.Bits[self.n_redundancy_bits](0)
+                    # redundancy_data = m.Bits[self.n_redundancy_bits](0)
+                    redundancy_data = m.Bits[1](0)
 
-                self.connect_RCE(redundancy_data)
-
-                # Huh this seems to work???
-                # FIXME/TODO move this up to a better place, make sure it still works...
-                connect_RCFs(self.mem)
 
                 # ready_for_dfc = ~READY   # Got data, not yet ready for next data
                 # Should be MemOff I think
@@ -778,7 +786,7 @@ class StateMachine(CoopGenerator):
 
                     # FIXME should probably turn WE on and off to prevent data shmearing
 
-                    SRAM_addr  = addr_to_mem[0:11]    # Address from prev step
+                    SRAM_addr  = addr_to_mem[0:ADDR_WIDTH]    # Address from prev step
                     SRAM_wdata = dfc.data             # Data from client
                     ready_for_dfc = ~READY            # Not yet ready for next data
                     next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
@@ -794,7 +802,7 @@ class StateMachine(CoopGenerator):
                 # Setup
                 dtc_enable = ENABLE
 
-                SRAM_addr = addr_to_mem[0:11]   # Address from prev step
+                SRAM_addr = addr_to_mem[0:ADDR_WIDTH]   # Address from prev step
                 data_to_client = self.mem.RDATA
 
                 dtc_valid = VALID
@@ -821,6 +829,12 @@ class StateMachine(CoopGenerator):
             # self.mem.deep_sleep @= ds; self.mem.power_gate @= pg
             self.connect_ds_pg(ds, pg)
 
+            self.connect_RCE(redundancy_data)
+
+
+
+
+
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
 
@@ -833,7 +847,7 @@ class StateMachine(CoopGenerator):
             # self.redundancy_reg.I  @= redundancy_data
             # self.redundancy_reg.CE @= redundancy_reg_enable
 
-            self.connect_redundancy_signals(redundancy_data, redundancy_reg_enable)
+            # self.connect_redundancy_signals(redundancy_data, redundancy_reg_enable)
 
             # "to" MessageQueue inputs
             self.CommandFromClient.ready  @= ready_for_cmd
