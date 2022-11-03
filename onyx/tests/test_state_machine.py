@@ -599,6 +599,30 @@ def test_state_machine_fault(base, mixins, graph, params):
             read_sram(addr=i, expect_data=i, dbg=print_region(i) )
             if i==0x3: prlog0("...\n")
 
+    def set_redundancy(want_redundancy, dbg=False):
+        prlog0("-----------------------------------------------\n")
+
+        if want_redundancy:
+            prlog0("Turn on redundancy, remain in state MemOn\n")
+            check_transition(Command.RedOn, State.MemOn)
+        
+            if dbg: prlog0("  - verify redundancy is ON (111...)\n")
+            mock_ckt.RCE.expect(1)
+        
+        else:
+            prlog0("Turn off redundancy, remain in state MemOn\n")
+            check_transition(Command.RedOn, State.MemOn)
+        
+            if dbg: prlog0("  - verify redundancy is OFF (0)\n")
+            mock_ckt.RCE.expect(0)
+        
+
+
+
+        if dbg: prlog0("  - and now we should be in state Mem0n\n")
+        tester.circuit.current_state.expect(State.MemOn)
+
+
 
     ########################################################################
     # BEGIN TEST
@@ -631,90 +655,41 @@ def test_state_machine_fault(base, mixins, graph, params):
     prlog0("-----------------------------------------------\n")
     prlog0("THIS IS THE NEW STUFF\n")
 
-
     mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
 
-    prlog0("expect rcf0a == 0\n")
+    prlog9("Expect RCF0A == 0\n")
     mock_ckt.RCF0A.expect(0)
 
     ADDR_WIDTH = SRAM_ADDR_WIDTH
     DATA_WIDTH = SRAM_DATA_WIDTH
 
     ########################################################################
-    # enable redundancy on the all columns
-    # mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
-    if True:
-            prlog0("-----------------------------------------------\n")
-            prlog0("Turn on redundancy, remain in state MemOn\n")
-            check_transition(Command.RedOn, State.MemOn)
+    # enable redundancy on all columns
+    set_redundancy(True, dbg=True)
 
-            # FIXME/TODO
-            prlog0("  - TODO verify redundancy is ON\n")
-            mock_ckt.RCE.expect(1)
-
-
-            prlog0("  - and now we should be in state Mem0n\n")
-            tester.circuit.current_state.expect(State.MemOn)
-
-    prlog0("write 0 everywhere\n")
-    # Write 0 everywhere
+    prlog9("-----------------------------------------------\n")
+    prlog0("Write 0 everywhere\n")
     for i in range(1 << ADDR_WIDTH):
+        write_sram(addr=i, data=0, dbg=False)
 
-        # FIXME/TODO
-        prlog0("  - TODO verify redundancy still ON\n")
-        mock_ckt.RCE.expect(1)
-
-
-        write_sram(addr=i, data=0)
-#         mock_ckt.CEn = hw.Bit(0)
-#         mock_ckt.REn = hw.Bit(0)
-#         mock_ckt.WEn = hw.Bit(1)
-#         if base is SRAMSingle:
-#             mock_ckt.ADDR = hw.BitVector[ADDR_WIDTH](i)
-#         else:
-#             mock_ckt.RADDR = hw.BitVector[ADDR_WIDTH](0)
-#             mock_ckt.WADDR = hw.BitVector[ADDR_WIDTH](i)
-# 
-#         mock_ckt.WDATA = hw.BitVector[DATA_WIDTH](0)
-        tester.step(2)
-
+    prlog9("  - verify redundancy still ON (111...)\n")
+    mock_ckt.RCE.expect(1)
 
 
     ########################################################################
     # disable redundancy
-    # mock_ckt.RCE = hw.BitVector[params['num_r_cols']](0)
-    if True:
-            prlog0("-----------------------------------------------\n")
-            prlog0("Turn OFF redundancy, remain in state MemOn\n")
-            check_transition(Command.RedOff, State.MemOn)
-
-            # FIXME/TODO
-            prlog0("  - TODO verify that redundancy is OFF\n")
-            mock_ckt.RCE.expect(0)
-
-            prlog0("  - and now we should be in state Mem0n\n")
-            tester.circuit.current_state.expect(State.MemOn)
+    set_redundancy(False)
 
     prlog0("write i everywhere\n")
     # Write i everywhere
+    # TODO/fixme consider dbg default should maybe be False
     for i in range(1 << ADDR_WIDTH):
+        write_sram(addr=i, data=i, dbg=False)
 
-        write_sram(addr=i, data=i)
+    prlog0("  - verify redundancy still OFF (0)\n")
+    mock_ckt.RCE.expect(0)
 
-#         mock_ckt.CEn = hw.Bit(0)
-#         mock_ckt.REn = hw.Bit(0)
-#         mock_ckt.WEn = hw.Bit(1)
-#         if base is SRAMSingle:
-#             mock_ckt.ADDR = hw.BitVector[ADDR_WIDTH](i)
-#         else:
-#             mock_ckt.RADDR = hw.BitVector[ADDR_WIDTH](0)
-#             mock_ckt.WADDR = hw.BitVector[ADDR_WIDTH](i)
-# 
-#         mock_ckt.WDATA = hw.BitVector[DATA_WIDTH](i)
-#         tester.step(2)
-# 
-
-
+    # fixme/todo these "if true" thingies are supposed to be a function, yes?
     ########################################################################
     # enable redundancy
     # mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
@@ -723,8 +698,7 @@ def test_state_machine_fault(base, mixins, graph, params):
             prlog0("Turn on redundancy, remain in state MemOn\n")
             check_transition(Command.RedOn, State.MemOn)
 
-            # FIXME/TODO
-            prlog0("  - TODO verify that redundancy is ON\n")
+            prlog0("  - verify that redundancy is ON\n")
             mock_ckt.RCE.expect(1)
 
             prlog0("  - and now we should be in state Mem0n\n")
