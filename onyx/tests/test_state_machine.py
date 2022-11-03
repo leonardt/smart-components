@@ -337,8 +337,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         reg = tester.circuit.DataToClient
         msg = f"MC sent us data '%x'"
         prlog0(f"{msg}\n",  reg.O)
-        if False:
-        # if check_data:
+        if check_data:
             reg.O.expect(dval)
             prlog0(f"...yes! passed data check\n")
 
@@ -611,7 +610,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         
         else:
             prlog0("Turn off redundancy, remain in state MemOn\n")
-            check_transition(Command.RedOn, State.MemOn)
+            check_transition(Command.RedOff, State.MemOn)
         
             if dbg: prlog0("  - verify redundancy is OFF (0)\n")
             mock_ckt.RCE.expect(0)
@@ -664,8 +663,8 @@ def test_state_machine_fault(base, mixins, graph, params):
     DATA_WIDTH = SRAM_DATA_WIDTH
 
     ########################################################################
-    # enable redundancy on all columns
-    set_redundancy(True, dbg=True)
+    # enable redundancy on all columns, write zeroes everywhere
+    set_redundancy(True)
 
     prlog9("-----------------------------------------------\n")
     prlog0("Write 0 everywhere\n")
@@ -677,79 +676,45 @@ def test_state_machine_fault(base, mixins, graph, params):
 
 
     ########################################################################
-    # disable redundancy
+    # disable redundancy, write i everywhere
     set_redundancy(False)
 
-    prlog0("write i everywhere\n")
-    # Write i everywhere
-    # TODO/fixme consider dbg default should maybe be False
+    prlog9("-----------------------------------------------\n")
+    prlog0("Write i everywhere\n")
     for i in range(1 << ADDR_WIDTH):
+        # TODO/fixme consider dbg default should maybe be False
         write_sram(addr=i, data=i, dbg=False)
 
-    prlog0("  - verify redundancy still OFF (0)\n")
+    prlog9("  - verify redundancy still OFF (0)\n")
     mock_ckt.RCE.expect(0)
 
-    # fixme/todo these "if true" thingies are supposed to be a function, yes?
     ########################################################################
-    # enable redundancy
-    # mock_ckt.RCE = hw.BitVector[params['num_r_cols']](-1)
-    if True:
-            prlog0("-----------------------------------------------\n")
-            prlog0("Turn on redundancy, remain in state MemOn\n")
-            check_transition(Command.RedOn, State.MemOn)
-
-            prlog0("  - verify that redundancy is ON\n")
-            mock_ckt.RCE.expect(1)
-
-            prlog0("  - and now we should be in state Mem0n\n")
-            tester.circuit.current_state.expect(State.MemOn)
+    # enable redundancy, read everything back
+    set_redundancy(True)
 
 
-
-    prlog0("read everything back\n")
+    prlog0("Read everything back\n")
     # read everything back
-    # the top bits should be 0,
-    # and the bottom bits should be the top bits
+    # "the top bits should be 0, and the bottom bits should be the top bits"
+    # I.e. for 8-bit data with 1 redundant column, should see
+    #     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    #     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
+    #     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 
+    #     ...
+    #     f, f, f, f, f, f, f, f, f, f, f, f, f, f, f, f
+    #
+    # SRAM is three 4-bit columns, 3rd column is redundant (with...?)
+
     for i in range(1 << ADDR_WIDTH):
 
         # expect = hw.BitVector[8](i) >> 4
-        # expect = i >> 4
-        expect = i
+        expect = i >> 4
+        # expect = i
         # prlog0(f"mem[{i:d}] == {expect} ?\n")
         read_sram(addr=i, expect_data=expect, dbg=True, check_data=True)
-        # tester.print("beep boop " + msg, *args)
-        # tester.print(f"beep boop got %d\n", mock_ckt.RDATA)
-        
 
+    prlog0("Redundancy test SUCCESSED\n")
 
-# 
-# 
-# 
-# 
-#         mock_ckt.CEn = hw.Bit(0)
-#         mock_ckt.REn = hw.Bit(1)
-#         mock_ckt.WEn = hw.Bit(0)
-#         if base is SRAMSingle:
-#             mock_ckt.ADDR = hw.BitVector[ADDR_WIDTH](i)
-#         else:
-#             mock_ckt.RADDR = hw.BitVector[ADDR_WIDTH](i)
-#             mock_ckt.WADDR = hw.BitVector[ADDR_WIDTH](0)
-#         mock_ckt.WDATA = hw.BitVector[DATA_WIDTH](0)
-#         tester.step(2)
-# 
-#         mock_ckt.RDATA.expect(
-#             expect
-#             # hw.BitVector[DATA_WIDTH](i) >> Definition.col_width *
-#             # Definition.num_r_cols
-# 
-#             # hw.BitVector[DATA_WIDTH](i) >> 4
-# 
-#             # 0, 0, 0, ... 16(1), 16(2), ... 15, 15, 15
-#         )
-#         if i == 15: mock_ckt.RDATA.expect(0)
-#         if i == 16: mock_ckt.RDATA.expect(1)
-#         if i == 32: mock_ckt.RDATA.expect(2)
-#         if i == 255: mock_ckt.RDATA.expect(15)
 
 
 

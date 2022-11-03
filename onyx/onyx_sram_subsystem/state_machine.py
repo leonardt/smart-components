@@ -652,12 +652,6 @@ class StateMachine(CoopGenerator):
                 data_from_mem   = 14  # magically changes when addr_to_mem changes
                 data_to_client  = 15
                 
-                # FIXME what? why?
-                # Seed SRAM_addr with any random value
-                # For some reason it breaks without this!!??
-                # SRAM_addr  = m.Bits[11](0x6)
-                SRAM_addr  = m.Bits[ADDR_WIDTH](0x6)
-
                 # So we only do this ONCE on start-up
                 init_next = m.Bits[1](0)
 
