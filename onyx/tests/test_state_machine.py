@@ -162,26 +162,23 @@ makedot("build/graph_red",     graph_red)
 makedot("build/graph_ack",     graph_ack)
 makedot("build/graph_ack_red", graph_ack_red)
 
-quicktest = False
 quicktest = True
-
+quicktest = False
 if quicktest: singledouble = [SRAMSingle]
 else:         singledouble = [SRAMSingle, SRAMDouble]
-
 @pytest.mark.parametrize('base', singledouble)
-
 
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
 @pytest.mark.parametrize(
-    'mixins,                                  graph,           params',
+   'mixins,                                  graph,           params',
   [
-      ((),                                      (graph_plain),   {},                  ),
-#     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
-      ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
-#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
-#     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
-#     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
+   ((),                                      (graph_plain),   {},                  ),
+   ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
+   ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
+   ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+   ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
+   ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
 )
 
@@ -335,7 +332,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9(f"{msg}\n",  reg.O)
         if check_data:
             reg.O.expect(dval)
-            prlog0(f"...yes! passed data check\n")
+            prlog9(f"...yes! passed data check\n")
 
         prlog9(f"still expect ready=1\n")
         tester.circuit.DataToClient_ready.O.expect(READY)
@@ -378,7 +375,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("  CORRECT!\n")
 
 
-    def write_sram(addr, data, dbg=True):
+    def write_sram(addr, data, dbg=False):
         ''' Assuming MC is in state MemOn, write "data" to "addr" '''
 
         prlog9("-----------------------------------------------\n")
@@ -414,7 +411,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("...CORRECT!\n")
 
 
-    def read_sram(addr, expect_data, dbg=True, check_data=False):
+    def read_sram(addr, expect_data, dbg=False, check_data=False):
         ' Read SRAM address "addr", verify that we got "expect_data" '
 
         prlog9("-----------------------------------------------\n")
@@ -629,7 +626,7 @@ def test_state_machine_fault(base, mixins, graph, params):
 
         ####################################################################
         # disable redundancy, write i everywhere
-        set_redundancy(False, dbg=True)
+        set_redundancy(False, dbg=DBG9)
 
         prlog9("-----------------------------------------------\n")
         prlog0("  - write i everywhere\n")
