@@ -533,29 +533,13 @@ class StateMachine(CoopGenerator):
         )()
         self.initreg.name = "initreg"
 
-        # redundancy reg holds redundancy data from ?client? for future ref
-        # self.redundancy_reg = reg("redundancy_reg", nbits=16); # "redundancy" reg
-        # ncols = SRAM_params['num_r_cols']
-        # 
-
+        # redundancy reg holds redundancy data from client
         if self.has_redundancy:
-            # redundancy reg b/c need to hold RCE at a fixed value
             self.redundancy_reg = m.Register(
-                T=m.Bits[self.num_r_cols], # FIXME
+                T=m.Bits[self.num_r_cols],
                 has_enable=False,
             )()
             self.redundancy_reg.name = "redundancy_reg"
-
-
-        # FIXME/TODO should not have to pass 'num_r_cols' as a
-        # separate parameter, yes?
-        # if self.has_redundancy:
-        #     ncols = self.num_r_cols
-        #     self.redundancy_reg = m.Register(
-        #         T=m.Bits[ncols],
-        #         has_enable=True,
-        #     )()
-        #     self.redundancy_reg.name = "redundancy_reg"
 
         # mem_addr reg holds mem_addr data from ?client? for future ref
         # self.mem_addr_reg = reg("mem_addr_reg", nbits=16); # "mem_addr" reg
@@ -571,9 +555,6 @@ class StateMachine(CoopGenerator):
             has_enable=True,
         )()
         self.mem_data_reg.name = "mem_data_reg"
-
-
-
 
         # FIXME move this up *before* any usage of self.mem :(
         # Instantiate SRAM using given definition
@@ -638,12 +619,7 @@ class StateMachine(CoopGenerator):
                 init_next = m.Bits[1](0)
 
                 # self.power_on()
-
-
                 ds = hw.Bit(0); pg = hw.Bit(0)
-
-                # Without this, complains later "redundancy_data does not exist" :o
-                # redundancy_data = m.Bits[self.num_r_cols]( 0)
 
             else:
                 addr_to_mem = cur_addr
@@ -664,11 +640,6 @@ class StateMachine(CoopGenerator):
             ready_for_cmd = ~READY     # Not ready for command from client
             dtc_valid     = ~VALID     # Not ready to send data to client
 
-            # Reset reg-enable signals
-
-            # if self.has_redundancy:
-            #     redundancy_reg_enable = ~ENABLE
-
             addr_to_mem_enable    = ~ENABLE
             dtc_enable            = ~ENABLE
             cmd_enable            = ~ENABLE
@@ -683,7 +654,6 @@ class StateMachine(CoopGenerator):
             # Given current state, find required action e.g.
             # 'Action.GetRedundancy' or 'Action.GetCommand'
             # info = match_action(cur_state)
-            # next_action = self.smg.get_action(cur_state, command=cfc.data)
             next_action = self.smg.get_action(cur_state)
 
             if next_action == Action.GetCommand:
@@ -696,21 +666,13 @@ class StateMachine(CoopGenerator):
                 if cfc.is_valid():
 
                     if cfc.data == Command.RedOn:
-                        # self.redundancy_reg.I @= m.Bits[self.num_r_cols](-1)
                         redundancy_data = m.Bits[self.num_r_cols](-1)
-                        # self.RCE_on()
 
                     elif cfc.data == Command.RedOff:
-                        # self.redundancy_reg.I @= m.Bits[self.num_r_cols]( 0)
                         redundancy_data = m.Bits[self.num_r_cols]( 0)
-                        # self.RCE_off()
 
                     else:
-                        # redundancy_data = self.redundancy_reg.O # works.
-                        # redundancy_data = self.redundancy_reg.O
-                        # redundancy_data = m.Bits[self.num_r_cols]( 0)
                         redundancy_data = self.get_redreg_out()
-
 
                     new_state = self.smg.get_next_state( cur_state, cfc.data)
                     if (new_state != cur_state):
@@ -752,10 +714,6 @@ class StateMachine(CoopGenerator):
 
             # State ReadAddr
             elif next_action == Action.GetAddr:
-
-                # Don't know yet if address will be used for READ or WRITE
-                # SRAM_re = m.Enable(1)
-                # SRAM_we = m.Enable(1)
 
                 # Setup
                 dfc_enable         = ENABLE
@@ -838,12 +796,9 @@ class StateMachine(CoopGenerator):
             # self.mem.deep_sleep @= ds; self.mem.power_gate @= pg
             self.connect_ds_pg(ds, pg)
 
+            # FIXME why is one of these "self" and the other one not?
             self.connect_RCE(redundancy_data)
-            # self.connect_RCE()
-
-            # self.mem.RCF0A @= hw.BitVector[1](0)
             connect_RCFs(self.mem)
-
 
             # Wire up our shortcuts
             self.state_reg.I      @= next_state
@@ -853,11 +808,6 @@ class StateMachine(CoopGenerator):
 
             self.mem_data_reg.I   @= data_to_mem
             self.mem_data_reg.CE  @= data_to_mem_enable
-
-            # self.redundancy_reg.I  @= redundancy_data
-            # self.redundancy_reg.CE @= redundancy_reg_enable
-
-            # self.connect_redundancy_signals(redundancy_data, redundancy_reg_enable)
 
             # "to" MessageQueue inputs
             self.CommandFromClient.ready  @= ready_for_cmd
