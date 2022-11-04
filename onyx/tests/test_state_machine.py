@@ -73,6 +73,7 @@ import fault
 ########################################################################
 # FIXME can use logger
 DBG  = True
+DBG9 = True
 DBG9 = False
 if DBG:
     def debug(m): print(m, flush=True)
@@ -186,8 +187,8 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
   [
 #     ((),                                      (graph_plain),   {},                  ),
 #     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
-    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
-#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
+    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
 #     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
 #     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
@@ -204,6 +205,9 @@ def test_state_machine_fault(base, mixins, graph, params):
     MemDefinition = generator(
         SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **params
     )
+
+    RED_ON  = hw.BitVector[params['num_r_cols']](-1)
+    RED_OFF = hw.BitVector[params['num_r_cols']](0)
 
     # SRAM name, e.g. 'SRAMDM_inst0'. See mock_mem.py. E.g. 
     # f=frozenset((SRAMModalMixin, ))
@@ -569,14 +573,14 @@ def test_state_machine_fault(base, mixins, graph, params):
             check_transition(Command.RedOn, State.MemOn)
         
             if dbg: prlog0("  - verify redundancy is ON (111...)\n")
-            mock_ckt.RCE.expect(1)
+            mock_ckt.RCE.expect(RED_ON)
         
         else:
             prlog0("Turn off redundancy, remain in state MemOn\n")
             check_transition(Command.RedOff, State.MemOn)
         
             if dbg: prlog0("  - verify redundancy is OFF (0)\n")
-            mock_ckt.RCE.expect(0)
+            mock_ckt.RCE.expect(RED_OFF)
         
         if dbg: prlog0("  - and now we should be in state Mem0n\n")
         tester.circuit.current_state.expect(State.MemOn)
@@ -586,7 +590,6 @@ def test_state_machine_fault(base, mixins, graph, params):
     # BEGIN TEST
     ########################################################################
 
-    ########################################################################
     # Tester setup
     Definition = StateMachine(MemDefinition, smg)
     tester = fault.Tester(Definition, Definition.CLK)
@@ -605,18 +608,8 @@ def test_state_machine_fault(base, mixins, graph, params):
     # readwrite_first_and_last()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+    ########################################################################
+    # Redundancy checks
 
     if has_redundancy:
         N_SRAM_WORDS = 1 << SRAM_ADDR_WIDTH
@@ -629,31 +622,31 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("Expect RCF0A == 0\n")
         mock_ckt.RCF0A.expect(0)
 
-        ########################################################################
+        ####################################################################
         # enable redundancy on all columns, write zeroes everywhere
         set_redundancy(True)
 
         prlog9("-----------------------------------------------\n")
         prlog0("  - write 0 everywhere\n")
-        for i in range(N_SRAM_WORDS): write_sram(addr=i, data=0, dbg=False)
+        for i in range(N_SRAM_WORDS): write_sram(addr=i, data=0, dbg=DBG9)
 
         prlog9("  - verify redundancy still ON (111...)\n")
-        mock_ckt.RCE.expect(1)
+        mock_ckt.RCE.expect(RED_ON)
 
 
-        ########################################################################
+        ####################################################################
         # disable redundancy, write i everywhere
         set_redundancy(False)
 
         prlog9("-----------------------------------------------\n")
         prlog0("  - write i everywhere\n")
-        for i in range(N_SRAM_WORDS): write_sram(addr=i, data=i, dbg=False)
+        for i in range(N_SRAM_WORDS): write_sram(addr=i, data=i, dbg=DBG9)
 
         prlog9("  - verify redundancy still OFF (0)\n")
-        mock_ckt.RCE.expect(0)
+        mock_ckt.RCE.expect(RED_OFF)
 
 
-        ########################################################################
+        ####################################################################
         # enable redundancy, read everything back
         set_redundancy(True)
 
@@ -672,7 +665,7 @@ def test_state_machine_fault(base, mixins, graph, params):
             # expect = hw.BitVector[8](i) >> 4
             expect = i >> 4
             prlog9(f"mem[{i:d}] == {expect} ?\n")
-            read_sram(addr=i, expect_data=expect, dbg=False)
+            read_sram(addr=i, expect_data=expect, dbg=DBG9)
 
 
         prlog0("REDUNDANCY CHECKS SUCCESSED\n")

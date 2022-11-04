@@ -387,7 +387,7 @@ def connect_RCFs_1col(ckt):
 
 # Use this one when SRAM_params = { 'num_r_cols': 2 }
 def connect_RCFs_2col(ckt):
-    nbits=2
+    nbits=1
     ckt.RCF0A @= hw.BitVector[nbits](0)
     ckt.RCF1A @= hw.BitVector[nbits](1)
 
@@ -465,13 +465,10 @@ class StateMachine(CoopGenerator):
         else:
             return (m.Bits[1](1) == m.Bits[1](1))
 
-    # FIXME/TODO should not have to pass 'num_r_cols' as a separate parameter, yes?
     def __init__(self, MemDefinition, state_machine_graph, **kwargs):
         self.MemDefinition = MemDefinition
         self.smg = state_machine_graph
 
-        # FIXME I'm sure there's a better way...
-        # self.num_r_cols = MemDefinition.num_r_cols
         if 'num_r_cols' in dir(self.MemDefinition):
             self.num_r_cols = MemDefinition.num_r_cols
             self.has_redundancy = True
@@ -557,12 +554,13 @@ class StateMachine(CoopGenerator):
         # ncols = SRAM_params['num_r_cols']
         # 
 
-        # redundancy reg b/c need to hold RCE at a fixed value
-        self.redundancy_reg = m.Register(
-            T=m.Bits[1], # FIXME
-            has_enable=False,
-        )()
-        self.redundancy_reg.name = "redundancy_reg"
+        if self.has_redundancy:
+            # redundancy reg b/c need to hold RCE at a fixed value
+            self.redundancy_reg = m.Register(
+                T=m.Bits[self.num_r_cols], # FIXME
+                has_enable=False,
+            )()
+            self.redundancy_reg.name = "redundancy_reg"
 
 
         # FIXME/TODO should not have to pass 'num_r_cols' as a
@@ -707,17 +705,11 @@ class StateMachine(CoopGenerator):
                 # E.g. cur_state==MemOff and cfc.data==PowerOn => goto MemOn
                 if cfc.is_valid():
 
-                    if cfc.data == Command.RedOn: # (6)
-                        # redundancy_data = m.Bits[self.n_redundancy_bits](-1)
-                        # redundancy_data = m.Bits[1](-1)
-                        self.redundancy_reg.I @= m.Bits[1](-1)
+                    if cfc.data == Command.RedOn:
+                        self.redundancy_reg.I @= m.Bits[self.num_r_cols](-1)
 
-
-
-                    elif cfc.data == Command.RedOff: # (7)
-                        # redundancy_data = m.Bits[self.n_redundancy_bits](0)
-                        # redundancy_data = m.Bits[1](0)
-                        self.redundancy_reg.I @= m.Bits[1](0)
+                    elif cfc.data == Command.RedOff:
+                        self.redundancy_reg.I @= m.Bits[self.num_r_cols](0)
 
                     else:
                         self.redundancy_reg.I @= self.redundancy_reg.O
@@ -853,8 +845,8 @@ class StateMachine(CoopGenerator):
             self.mem.RCE @= self.redundancy_reg.O
             # self.redundancy_reg.I @= redundancy_data
 
-            self.mem.RCF0A @= hw.BitVector[1](0)
-
+            # self.mem.RCF0A @= hw.BitVector[1](0)
+            connect_RCFs(self.mem)
 
 
             # Wire up our shortcuts
