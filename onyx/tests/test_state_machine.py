@@ -37,10 +37,7 @@ from onyx_sram_subsystem.state_machine import Action
 # SRAM_ADDR_WIDTH = 11
 # SRAM_DATA_WIDTH = 16
 
-
-
 # Change to match test_mock_mem
-
 SRAM_ADDR_WIDTH = 8
 SRAM_DATA_WIDTH = 8
 
@@ -73,8 +70,8 @@ import fault
 ########################################################################
 # FIXME can use logger
 DBG  = True
-DBG9 = True
 DBG9 = False
+DBG9 = True
 if DBG:
     def debug(m): print(m, flush=True)
 else:
@@ -108,14 +105,8 @@ sm_init = (
 # Init for SRAMs with redundancy
 sm_init_red = (
     (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-
-    # (State.MemOn,     Command.RedOn,      Action.RedMode,       State.MemOn),
-    # (State.MemOn,     Command.RedOff,     Action.RedMode,       State.MemOn),
-
-    (State.MemOn,     Command.RedOn,      Action.GetCommand,       State.MemOn),
-    (State.MemOn,     Command.RedOff,     Action.GetCommand,       State.MemOn),
-
-
+    (State.MemOn,     Command.RedOn,      Action.GetCommand,    State.MemOn),
+    (State.MemOn,     Command.RedOff,     Action.GetCommand,    State.MemOn),
 )
 
 # MemOn for plain SRAMs
@@ -185,10 +176,10 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
 @pytest.mark.parametrize(
     'mixins,                                  graph,           params',
   [
-#     ((),                                      (graph_plain),   {},                  ),
+      ((),                                      (graph_plain),   {},                  ),
 #     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
 #     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
-    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
 #     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
 #     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
@@ -207,7 +198,7 @@ def test_state_machine_fault(base, mixins, graph, params):
     )
 
     RED_ON  = hw.BitVector[params['num_r_cols']](-1)
-    RED_OFF = hw.BitVector[params['num_r_cols']](0)
+    RED_OFF = hw.BitVector[params['num_r_cols']]( 0)
 
     # SRAM name, e.g. 'SRAMDM_inst0'. See mock_mem.py. E.g. 
     # f=frozenset((SRAMModalMixin, ))
@@ -271,10 +262,9 @@ def test_state_machine_fault(base, mixins, graph, params):
         Send data to controller's DataFromClient (dfc) reg
         and verify that controller stored it in its reg 'reg_name'
         '''
-        
+
         # Send dval to MC receive-queue as "DataFromClient" data
         prlog9("...sending data to controller L203\n")
-        # tester.circuit.receive = m.Bits[16](dval)
         tester.circuit.receive = m.Bits[SRAM_DATA_WIDTH](dval)
         # prlog0("initreg is now %d (1)\n", tester.circuit.initreg.O)
 
@@ -319,6 +309,7 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     def get_and_check_dtc_data(dval, check_data=True):
         "Get data from controller's DataToClient (dtc) interface"
+
         # We expect that sender has valid data
         # tester.print("beep boop ...expect send_valid TRUE...\n")
         # tester.circuit.send_valid.expect(VALID)
