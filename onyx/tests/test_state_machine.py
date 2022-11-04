@@ -176,7 +176,7 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
 @pytest.mark.parametrize(
     'mixins,                                  graph,           params',
   [
-#      ((),                                      (graph_plain),   {},                  ),
+      ((),                                      (graph_plain),   {},                  ),
 #     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
       ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
 #     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),

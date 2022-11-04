@@ -407,12 +407,8 @@ class StateMachine(CoopGenerator):
     def get_redreg_out(self):
         if self.has_redundancy:
             return self.redundancy_reg.O
-
-
-    # def connect_redundancy_signals(self, w, w2):
-    #     if self.has_redundancy:
-    #         self.redundancy_reg.I  @= w
-    #         self.redundancy_reg.CE @= w2
+        else:
+            return  m.Bits[self.num_r_cols](0)
 
     # No this does not work :(
     # def power_on(self):
