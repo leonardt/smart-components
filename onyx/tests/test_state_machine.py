@@ -315,7 +315,6 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     def get_and_check_dtc_data(dval, check_data=True):
         "Get data from controller's DataToClient (dtc) interface"
-        DBG9=True
         # We expect that sender has valid data
         # tester.print("beep boop ...expect send_valid TRUE...\n")
         # tester.circuit.send_valid.expect(VALID)
@@ -336,7 +335,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         # See what we got / check latched data for correctness
         reg = tester.circuit.DataToClient
         msg = f"MC sent us data '%x'"
-        prlog0(f"{msg}\n",  reg.O)
+        prlog9(f"{msg}\n",  reg.O)
         if check_data:
             reg.O.expect(dval)
             prlog0(f"...yes! passed data check\n")
@@ -418,7 +417,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("...CORRECT!\n")
 
 
-    def read_sram(addr, expect_data, dbg=True, check_data=True):
+    def read_sram(addr, expect_data, dbg=True, check_data=False):
         ' Read SRAM address "addr", verify that we got "expect_data" '
 
         prlog9("-----------------------------------------------\n")
@@ -524,52 +523,16 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog9("successfully arrived in state MemOn\n")
 
 
-    def check_redundancy_onoff():
-        '''Try turning redundancy on and off i guess'''
-
-        if has_redundancy:
-            prlog0("-----------------------------------------------\n")
-            prlog0("Turn on redundancy, remain in state MemOn\n")
-            check_transition(Command.RedOn, State.MemOn)
-
-            # FIXME/TODO
-            prlog0("  - TODO verify that redundancy is ON\n")
-
-            prlog0("  - and now we should be in state Memoff\n")
-            tester.circuit.current_state.expect(State.MemOn)
-
-
-            prlog0("-----------------------------------------------\n")
-            prlog0("Turn OFF redundancy, remain in state MemOn\n")
-            check_transition(Command.RedOff, State.MemOn)
-
-            # FIXME/TODO
-            prlog0("  - TODO verify that redundancy is OFF\n")
-
-            prlog0("  - and now we should be in state Mem0n\n")
-            tester.circuit.current_state.expect(State.MemOn)
-
-            # FIXME/TODO check to see that redundancy modes got set?
-            #         prlog0("  - sending redundancy data to MC\n")
-            #         ########################################################################
-            #         # rdata = 17
-            #         # rdata -1 "enables redundancy to all columns" according to e.g. test_mock_mem.py
-            #         rdata = -1
-            # 
-            #         prlog9("-----------------------------------------------\n")
-            #         prlog0(f"  - check that MC received redundancy data '{rdata}'\n")
-            #         send_and_check_dfc_data(rdata, "redundancy", tester.circuit.redundancy_reg)
-            
     def readwrite_check_two_locations():
         '''Write and read two random locations in the SRAM'''
 
         prlog0("-----------------------------------------------\n")
-        write_sram(addr=0x33, data=       0x33)
-        read_sram( addr=0x33, expect_data=0x33)
+        write_sram(addr=0x33, data=       0x3)
+        read_sram( addr=0x33, expect_data=0x3, check_data=True)
 
         prlog0("-----------------------------------------------\n")
-        write_sram(addr=0x88, data=       0x88)
-        read_sram( addr=0x88, expect_data=0x88)
+        write_sram(addr=0x88, data=       0x8)
+        read_sram( addr=0x88, expect_data=0x8, check_data=True)
 
     def readwrite_first_and_last():
         '''Write and read first and last n location of the SRAM'''
@@ -595,11 +558,11 @@ def test_state_machine_fault(base, mixins, graph, params):
         # For i = 0 to MAX_ADDR, read SRAM[i] =? i
         for i in range( 1 << SRAM_ADDR_WIDTH ):
             if not print_region(i): continue
-            read_sram(addr=i, expect_data=i, dbg=print_region(i) )
+            read_sram(addr=i, expect_data=i, dbg=print_region(i), check_data=True )
             if i==0x3: prlog0("...\n")
 
     def set_redundancy(want_redundancy, dbg=False):
-        prlog0("-----------------------------------------------\n")
+        prlog9("-----------------------------------------------\n")
 
         if want_redundancy:
             prlog0("Turn on redundancy, remain in state MemOn\n")
@@ -615,12 +578,8 @@ def test_state_machine_fault(base, mixins, graph, params):
             if dbg: prlog0("  - verify redundancy is OFF (0)\n")
             mock_ckt.RCE.expect(0)
         
-
-
-
         if dbg: prlog0("  - and now we should be in state Mem0n\n")
         tester.circuit.current_state.expect(State.MemOn)
-
 
 
     ########################################################################
@@ -639,81 +598,85 @@ def test_state_machine_fault(base, mixins, graph, params):
     # Check all the MemOff modes, ending at MemOn
     check_memoff_modes(needs_wake_ack)
 
-    # FIXME maybe don't need this test after real redundancy tests come in
-    # Try turning redundancy on and off i guess
-    # check_redundancy_onoff()
-
     # Write and read two random locations in the SRAM
     # readwrite_check_two_locations()
     
     # Write and read first and last n location of the SRAM
     # readwrite_first_and_last()
 
-    prlog0("-----------------------------------------------\n")
-    prlog0("-----------------------------------------------\n")
-    prlog0("-----------------------------------------------\n")
-    prlog0("THIS IS THE NEW STUFF\n")
-
-    mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
-
-    prlog9("Expect RCF0A == 0\n")
-    mock_ckt.RCF0A.expect(0)
-
-    ADDR_WIDTH = SRAM_ADDR_WIDTH
-    DATA_WIDTH = SRAM_DATA_WIDTH
-
-    ########################################################################
-    # enable redundancy on all columns, write zeroes everywhere
-    set_redundancy(True)
-
-    prlog9("-----------------------------------------------\n")
-    prlog0("Write 0 everywhere\n")
-    for i in range(1 << ADDR_WIDTH):
-        write_sram(addr=i, data=0, dbg=False)
-
-    prlog9("  - verify redundancy still ON (111...)\n")
-    mock_ckt.RCE.expect(1)
 
 
-    ########################################################################
-    # disable redundancy, write i everywhere
-    set_redundancy(False)
-
-    prlog9("-----------------------------------------------\n")
-    prlog0("Write i everywhere\n")
-    for i in range(1 << ADDR_WIDTH):
-        # TODO/fixme consider dbg default should maybe be False
-        write_sram(addr=i, data=i, dbg=False)
-
-    prlog9("  - verify redundancy still OFF (0)\n")
-    mock_ckt.RCE.expect(0)
-
-    ########################################################################
-    # enable redundancy, read everything back
-    set_redundancy(True)
 
 
-    prlog0("Read everything back\n")
-    # read everything back
-    # "the top bits should be 0, and the bottom bits should be the top bits"
-    # I.e. for 8-bit data with 1 redundant column, should see
-    #     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-    #     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
-    #     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 
-    #     ...
-    #     f, f, f, f, f, f, f, f, f, f, f, f, f, f, f, f
-    #
-    # SRAM is three 4-bit columns, 3rd column is redundant (with...?)
 
-    for i in range(1 << ADDR_WIDTH):
 
-        # expect = hw.BitVector[8](i) >> 4
-        expect = i >> 4
-        # expect = i
-        # prlog0(f"mem[{i:d}] == {expect} ?\n")
-        read_sram(addr=i, expect_data=expect, dbg=True, check_data=True)
 
-    prlog0("Redundancy test SUCCESSED\n")
+
+
+
+
+
+
+
+    if has_redundancy:
+        N_SRAM_WORDS = 1 << SRAM_ADDR_WIDTH
+
+        prlog0("-----------------------------------------------\n")
+        prlog0("REDUNDANCY CHECKS\n")
+
+        mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+
+        prlog9("Expect RCF0A == 0\n")
+        mock_ckt.RCF0A.expect(0)
+
+        ########################################################################
+        # enable redundancy on all columns, write zeroes everywhere
+        set_redundancy(True)
+
+        prlog9("-----------------------------------------------\n")
+        prlog0("  - write 0 everywhere\n")
+        for i in range(N_SRAM_WORDS): write_sram(addr=i, data=0, dbg=False)
+
+        prlog9("  - verify redundancy still ON (111...)\n")
+        mock_ckt.RCE.expect(1)
+
+
+        ########################################################################
+        # disable redundancy, write i everywhere
+        set_redundancy(False)
+
+        prlog9("-----------------------------------------------\n")
+        prlog0("  - write i everywhere\n")
+        for i in range(N_SRAM_WORDS): write_sram(addr=i, data=i, dbg=False)
+
+        prlog9("  - verify redundancy still OFF (0)\n")
+        mock_ckt.RCE.expect(0)
+
+
+        ########################################################################
+        # enable redundancy, read everything back
+        set_redundancy(True)
+
+        prlog0("  - read everything back: 16 each 0,0,0... 1,1,1... f,f,f\n")
+        # read everything back
+        # "the top bits should be 0, and the bottom bits should be the top bits"
+        # I.e. for 8-bit data with 1 redundant column, should see
+        #     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        #     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
+        #     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 
+        #     ...
+        #     f, f, f, f, f, f, f, f, f, f, f, f, f, f, f, f
+        #
+        # SRAM is three 4-bit columns, 3rd column is redundant (with...?)
+        for i in range(N_SRAM_WORDS):
+            # expect = hw.BitVector[8](i) >> 4
+            expect = i >> 4
+            prlog9(f"mem[{i:d}] == {expect} ?\n")
+            read_sram(addr=i, expect_data=expect, dbg=False)
+
+
+        prlog0("REDUNDANCY CHECKS SUCCESSED\n")
+        prlog0("-----------------------------------------------\n")
 
 
 
