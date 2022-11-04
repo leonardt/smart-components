@@ -159,32 +159,14 @@ class StateMachineGraph():
     # (State.MemOn,     Command.RedOn,      Action.RedMode,       State.MemOn),
     # (State.MemOn,     Command.RedOff,     Action.RedMode,       State.MemOn),
 
-    def get_action(self, cur_state, command=Command.NoCommand):
+    def get_action(self, cur_state):
         '''If cur_state matches and no command needed, return target action'''
         action = Action.NoAction # default    
         for e in self.graph:
-            e_state    = self.curstate(e)
-            e_action   = self.action(e)
-            e_command  = self.command(e)
-
-            state_match = (cur_state == e_state)
-            command_match = (
-                (command == e_command) | (command == Command.NoCommand)
-            )
-
-
+            e_state  = self.curstate(e)
+            e_action = self.action(e)
             # If we are in the indicated state, tell SM to do the indicated action (duh)
             action = (cur_state == e_state).ite(e_action, action)
-
-
-#             action = state_match.ite(
-#                 command_match.ite(
-#                     e_action,
-#                     action
-#                 ),
-#                 action)
-
-
         return action
             
     def get_next_state(self, cur_state, command=Command.NoCommand):
@@ -417,10 +399,15 @@ class StateMachine(CoopGenerator):
             self.mem.deep_sleep @= ds
             self.mem.power_gate @= pg
 
-#     def connect_RCE(self, w):
-#         # if self.has_redundancy:
-#             self.mem.RCE @= w
-# 
+    def connect_RCE(self, w):
+        if self.has_redundancy:
+            self.redundancy_reg.I @= w
+            self.mem.RCE @= self.redundancy_reg.O
+
+    def get_redreg_out(self):
+        if self.has_redundancy:
+            return self.redundancy_reg.O
+
 
     # def connect_redundancy_signals(self, w, w2):
     #     if self.has_redundancy:
@@ -473,6 +460,7 @@ class StateMachine(CoopGenerator):
             self.num_r_cols = MemDefinition.num_r_cols
             self.has_redundancy = True
         else:
+            self.num_r_cols = 1    # Kind of a hack but if it works why not I guess
             self.has_redundancy = False
 
         if 'wake_ack' in dir(MemDefinition):
@@ -654,7 +642,12 @@ class StateMachine(CoopGenerator):
                 init_next = m.Bits[1](0)
 
                 # self.power_on()
+
+
                 ds = hw.Bit(0); pg = hw.Bit(0)
+
+                # Without this, complains later "redundancy_data does not exist" :o
+                # redundancy_data = m.Bits[self.num_r_cols]( 0)
 
             else:
                 addr_to_mem = cur_addr
@@ -694,7 +687,8 @@ class StateMachine(CoopGenerator):
             # Given current state, find required action e.g.
             # 'Action.GetRedundancy' or 'Action.GetCommand'
             # info = match_action(cur_state)
-            next_action = self.smg.get_action(cur_state, command=cfc.data)
+            # next_action = self.smg.get_action(cur_state, command=cfc.data)
+            next_action = self.smg.get_action(cur_state)
 
             if next_action == Action.GetCommand:
 
@@ -706,13 +700,20 @@ class StateMachine(CoopGenerator):
                 if cfc.is_valid():
 
                     if cfc.data == Command.RedOn:
-                        self.redundancy_reg.I @= m.Bits[self.num_r_cols](-1)
+                        # self.redundancy_reg.I @= m.Bits[self.num_r_cols](-1)
+                        redundancy_data = m.Bits[self.num_r_cols](-1)
+                        # self.RCE_on()
 
                     elif cfc.data == Command.RedOff:
-                        self.redundancy_reg.I @= m.Bits[self.num_r_cols](0)
+                        # self.redundancy_reg.I @= m.Bits[self.num_r_cols]( 0)
+                        redundancy_data = m.Bits[self.num_r_cols]( 0)
+                        # self.RCE_off()
 
                     else:
-                        self.redundancy_reg.I @= self.redundancy_reg.O
+                        # redundancy_data = self.redundancy_reg.O # works.
+                        # redundancy_data = self.redundancy_reg.O
+                        # redundancy_data = m.Bits[self.num_r_cols]( 0)
+                        redundancy_data = self.get_redreg_out()
 
 
                     new_state = self.smg.get_next_state( cur_state, cfc.data)
@@ -826,6 +827,7 @@ class StateMachine(CoopGenerator):
                     dtc_valid  = ~VALID
                     dtc_enable = ~ENABLE
 
+
             # FIXME/TODO these could both be simply 'self.connect_ad(SRAM_addr, SRAM_wdata)'
             # self.mem.ADDR  @= SRAM_addr
             self.connect_addr(SRAM_addr)
@@ -840,10 +842,8 @@ class StateMachine(CoopGenerator):
             # self.mem.deep_sleep @= ds; self.mem.power_gate @= pg
             self.connect_ds_pg(ds, pg)
 
-            # self.connect_RCE(redundancy_data)
-            # self.mem.RCE @= redundancy_data
-            self.mem.RCE @= self.redundancy_reg.O
-            # self.redundancy_reg.I @= redundancy_data
+            self.connect_RCE(redundancy_data)
+            # self.connect_RCE()
 
             # self.mem.RCF0A @= hw.BitVector[1](0)
             connect_RCFs(self.mem)

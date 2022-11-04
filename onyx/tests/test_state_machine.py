@@ -70,8 +70,8 @@ import fault
 ########################################################################
 # FIXME can use logger
 DBG  = True
-DBG9 = False
 DBG9 = True
+DBG9 = False
 if DBG:
     def debug(m): print(m, flush=True)
 else:
@@ -176,9 +176,9 @@ else:         singledouble = [SRAMSingle, SRAMDouble]
 @pytest.mark.parametrize(
     'mixins,                                  graph,           params',
   [
-      ((),                                      (graph_plain),   {},                  ),
+#      ((),                                      (graph_plain),   {},                  ),
 #     ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
-#     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
+      ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
 #     ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
 #     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
 #     ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
@@ -197,9 +197,6 @@ def test_state_machine_fault(base, mixins, graph, params):
         SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **params
     )
 
-    RED_ON  = hw.BitVector[params['num_r_cols']](-1)
-    RED_OFF = hw.BitVector[params['num_r_cols']]( 0)
-
     # SRAM name, e.g. 'SRAMDM_inst0'. See mock_mem.py. E.g. 
     # f=frozenset((SRAMModalMixin, ))
     # SRAM_FEATURE_TABLE[SRAMSingle][f].__name__ => 'SRAMSM'
@@ -209,6 +206,11 @@ def test_state_machine_fault(base, mixins, graph, params):
     # Convenient shortcuts for later
     has_redundancy = (SRAMRedundancyMixin in mixins)
     needs_wake_ack = (SRAMModalMixin      in mixins)
+
+    if has_redundancy:
+        RED_ON  = hw.BitVector[params['num_r_cols']](-1)
+        RED_OFF = hw.BitVector[params['num_r_cols']]( 0)
+
 
     ##############################################################################
     # Old school debugging: tell verilator to print things to its log
@@ -593,10 +595,10 @@ def test_state_machine_fault(base, mixins, graph, params):
     check_memoff_modes(needs_wake_ack)
 
     # Write and read two random locations in the SRAM
-    # readwrite_check_two_locations()
+    readwrite_check_two_locations()
     
     # Write and read first and last n location of the SRAM
-    # readwrite_first_and_last()
+    readwrite_first_and_last()
 
 
     ########################################################################
@@ -627,7 +629,7 @@ def test_state_machine_fault(base, mixins, graph, params):
 
         ####################################################################
         # disable redundancy, write i everywhere
-        set_redundancy(False)
+        set_redundancy(False, dbg=True)
 
         prlog9("-----------------------------------------------\n")
         prlog0("  - write i everywhere\n")
