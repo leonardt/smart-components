@@ -2,6 +2,7 @@
 # Importing things
 
 # import itertools as it
+# FIXME don't need hwtypes, can use m.Bits instead I think
 import hwtypes as hw
 
 import pytest
@@ -164,21 +165,24 @@ makedot("build/graph_ack_red", graph_ack_red)
 
 quicktest = True
 quicktest = False
+
 if quicktest: singledouble = [SRAMSingle]
 else:         singledouble = [SRAMSingle, SRAMDouble]
+
 @pytest.mark.parametrize('base', singledouble)
+
 
 # Stacking decorators? What th'? How does this even work???
 # Trailing commas in 'mixins' tuples are *required* or it breaks...
 @pytest.mark.parametrize(
-   'mixins,                                  graph,           params',
+    'mixins,                                  graph,           params',
   [
-   ((),                                      (graph_plain),   {},                  ),
-   ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
-   ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
-   ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
-   ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
-   ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
+    ((),                                      (graph_plain),   {},                  ),
+    ((SRAMModalMixin, ),                      (graph_ack),     {},                  ),
+    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 1 }, ),
+    ((SRAMRedundancyMixin, ),                 (graph_red),     { 'num_r_cols': 2 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 1 }, ),
+    ((SRAMModalMixin, SRAMRedundancyMixin, ), (graph_ack_red), { 'num_r_cols': 2 }, ),
   ]
 )
 
@@ -207,7 +211,6 @@ def test_state_machine_fault(base, mixins, graph, params):
     if has_redundancy:
         RED_ON  = hw.BitVector[params['num_r_cols']](-1)
         RED_OFF = hw.BitVector[params['num_r_cols']]( 0)
-
 
     ##############################################################################
     # Old school debugging: tell verilator to print things to its log
@@ -662,13 +665,6 @@ def test_state_machine_fault(base, mixins, graph, params):
         prlog0("-----------------------------------------------\n")
 
 
-
-
-
-
-
-
-
     ########################################################################
     # Turn it off
     ########################################################################
@@ -705,11 +701,12 @@ def test_state_machine_fault(base, mixins, graph, params):
     #    tester.compile_and_run("verilator", flags=["-Wno-fatal"], 
     #        magma_opts={"verilator_debug": True}, directory="build")
 
+    # For waveforms/gtkw turn on '--trace'
     debug("* Begin verilator compile-and-run")
     tester.compile_and_run(
         "verilator",
-        # flags=["-Wno-fatal"],
-        flags=["-Wno-fatal", "--trace"],
+        flags=["-Wno-fatal"],
+        # flags=["-Wno-fatal", "--trace"],
         magma_opts={"verilator_debug": True},
         directory="build",
     )
