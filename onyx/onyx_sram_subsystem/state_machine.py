@@ -159,16 +159,6 @@ class StateMachineGraph():
     # (State.MemOn,     Command.RedOn,      Action.RedMode,       State.MemOn),
     # (State.MemOn,     Command.RedOff,     Action.RedMode,       State.MemOn),
 
-    def get_action(self, cur_state):
-        '''If cur_state matches and no command needed, return target action'''
-        action = Action.NoAction # default    
-        for e in self.graph:
-            e_state  = self.curstate(e)
-            e_action = self.action(e)
-            # If we are in the indicated state, tell SM to do the indicated action (duh)
-            action = (cur_state == e_state).ite(e_action, action)
-        return action
-            
     def get_next_state(self, cur_state, command=Command.NoCommand):
         '''If cur_state and command both match, return target state'''
         state = cur_state # default    
@@ -652,12 +642,7 @@ class StateMachine(CoopGenerator):
             # Default is to stay in the same state as before
             next_state = cur_state
                 
-            # Given current state, find required action e.g.
-            # 'Action.GetRedundancy' or 'Action.GetCommand'
-            # info = match_action(cur_state)
-            next_action = self.smg.get_action(cur_state)
-
-            if next_action == Action.GetCommand:
+            if (cur_state == State.MemOff) | (cur_state == State.MemOn):
 
                 # Enable command reg, ready cmd queue
                 cmd_enable = ENABLE
@@ -682,14 +667,16 @@ class StateMachine(CoopGenerator):
 
             # FIXME remaining elif's should have more parallel structure :(
 
-            elif next_action == Action.NoAction:
+            elif cur_state == State.MemInit:
+
+                # FIXME should use the get_next _state!!!
                 # next_state = self.smg.get_next_state(cur_state)
                 next_state = State.MemOff
 
 
 
             # State.MemOff + Command.PowerOn => State.SetMode => Action.SetMode()
-            elif next_action == Action.SetMode:
+            elif cur_state == State.SetMode:
 
                 if cfc.data == Command.DeepSleep:
                     # self.goto_deep_sleep()
@@ -714,7 +701,7 @@ class StateMachine(CoopGenerator):
                 )
 
             # State ReadAddr
-            elif next_action == Action.GetAddr:
+            elif (cur_state == State.ReadAddr) | (cur_state == State.WriteAddr):
 
                 # Setup
                 dfc_enable         = ENABLE
@@ -731,7 +718,7 @@ class StateMachine(CoopGenerator):
 
 
             # State WriteData is similar to ReadAddr/WriteAddr
-            elif next_action == Action.WriteData:
+            elif cur_state == State.WriteData:
 
                 # Enable WRITE, disable READ
                 SRAM_re = m.Enable(0)
@@ -760,7 +747,7 @@ class StateMachine(CoopGenerator):
 
 
             # State ReadData
-            elif next_action == Action.ReadData:
+            elif cur_state == State.ReadData:
 
                 # Enable READ, disable WRITE
                 SRAM_re = m.Enable(1)
