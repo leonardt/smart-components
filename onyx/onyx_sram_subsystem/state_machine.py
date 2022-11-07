@@ -214,8 +214,9 @@ class StateMachineGraph():
             action    = match_enum(Action, edge[2])
             nextstate = match_enum(State, edge[3])
 
-            if action == "GetCommand": label = command
-            else:                      label = action + "()"
+            # New: always use command for the edges
+            # b/c actions are redundant w/ state
+            label = command
 
             print(f'  {quote(curstate):11} -> {quote(nextstate):11} [label={quote(label)}];')
         print('}\n')
