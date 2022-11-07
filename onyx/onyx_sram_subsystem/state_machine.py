@@ -107,15 +107,11 @@ class State():
     Retention      = m.Bits[nbits](i); i=i+1 # 10
     # When adding new states remember to update num_states above!!
 
-
-##############################################################################
-# begin side quest
-
 def match_enum(enum_class, enum_value):
     '''
     Given enum class and value, return the name of enum as a string.
     Examples:
-          match_enum(State, State.MemOff)     => "MemOff"
+          match_enum(State,  State.MemOff)    => "MemOff"
           match_enum(Action, Action.ReadData) => "ReadData"
     '''
     for i in dir(enum_class):
@@ -124,22 +120,21 @@ def match_enum(enum_class, enum_value):
             if int(val) == int(enum_value): return i
 
 
-# end side quest
 ##############################################################################
 # Example of input to StateMachineGraph():
 # 
 # ANY = Command.NoCommand
 # mygraph = (
-#     (State.MemInit,   ANY,                Action.GetRedundancy, State.MemOff),
-#     (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
-#     (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-#     (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-#     (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-#     (State.SetMode,   ANY,                Action.SetMode,       State.MemOn),
-#     (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-#     (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-#     (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
-#     (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+#     (State.MemInit,   ANY,                State.MemOff),
+#     (State.MemOff,    Command.PowerOn,    State.SetMode),
+#     (State.MemOn,     Command.PowerOff,   State.MemOff),
+#     (State.MemOn,     Command.Read,       State.ReadAddr),
+#     (State.MemOn,     Command.Write,      State.WriteAddr),
+#     (State.SetMode,   ANY,                State.MemOn),
+#     (State.ReadAddr,  ANY,                State.ReadData),
+#     (State.WriteAddr, ANY,                State.WriteData),
+#     (State.WriteData, ANY,                State.MemOn),
+#     (State.ReadData,  ANY,                State.MemOn),
 # )
 
 class StateMachineGraph():
@@ -149,15 +144,13 @@ class StateMachineGraph():
     # Low-tech labels for our "edge" data structure/list
     def curstate  (self, edge): return edge[0]
     def command   (self, edge): return edge[1]
-    def action    (self, edge): return edge[2]
-    def nextstate (self, edge): return edge[3]
+    def nextstate (self, edge): return edge[2]
 
-    # bookmark/fixme add command= etc.
-    # (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
-    # (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-    # (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    # (State.MemOn,     Command.RedOn,      Action.RedMode,       State.MemOn),
-    # (State.MemOn,     Command.RedOff,     Action.RedMode,       State.MemOn),
+    # (State.MemOn,     Command.PowerOff,       State.MemOff),
+    # (State.MemOn,     Command.Read,           State.ReadAddr),
+    # (State.MemOn,     Command.Write,          State.WriteAddr),
+    # (State.WriteAddr, ANY,                    State.WriteData),
+    # (State.WriteData, ANY,                    State.MemOn),
 
     def get_next_state(self, cur_state, command=Command.NoCommand):
         '''If cur_state and command both match, return target state'''
@@ -167,13 +160,13 @@ class StateMachineGraph():
             e_curstate = self.curstate(e)
             e_nextstate = self.nextstate(e)
 
-            state_match = (cur_state == e_curstate)
-            command_match = (command == e_command)
+            state_match   = (cur_state == e_curstate)
+            command_match = (command   == e_command)
 
             state = state_match.ite(
                 command_match.ite(
                     e_nextstate,
-                    state
+                    state,
                 ),
                 state)
         return state
@@ -184,36 +177,35 @@ class StateMachineGraph():
         # Example: build_dot_graph(mygraph) =>
         # 
         #     digraph Diagram { node [shape=box];
-        #       "MemInit"   -> "MemOff"    [label="GetRedundancy()"];
+        #       "MemInit"   -> "MemOff"    [label="NoCommand"];
         #       "MemOff"    -> "SetMode"   [label="PowerOn"];
         #       "MemOn"     -> "MemOff"    [label="PowerOff"];
         #       "MemOn"     -> "ReadAddr"  [label="Read"];
         #       "MemOn"     -> "WriteAddr" [label="Write"];
-        #       "SetMode"   -> "MemOn"     [label="SetMode()"];
-        #       "ReadAddr"  -> "ReadData"  [label="GetAddr()"];
-        #       "WriteAddr" -> "WriteData" [label="GetAddr()"];
-        #       "WriteData" -> "MemOn"     [label="WriteData()"];
-        #       "ReadData"  -> "MemOn"     [label="ReadData()"];
+        #       "SetMode"   -> "MemOn"     [label="PowerOn"];
+        #       "ReadAddr"  -> "ReadData"  [label="NoCommand"];
+        #       "WriteAddr" -> "WriteData" [label="NoCommand"];
+        #       "WriteData" -> "MemOn"     [label="NoCommand"];
+        #       "ReadData"  -> "MemOn"     [label="NoCommand"];
         #     }
         '''
         def quote(word): return '"' + word + '"'
         print('digraph Diagram { node [shape=box];')
         for edge in graph:
-            curstate  = match_enum(State, edge[0])
+            # FIXME should use curstate(edge) etc. instead of edge[0] etc.
+            curstate  = match_enum(State,   edge[0])
             command   = match_enum(Command, edge[1])
-            action    = match_enum(Action, edge[2])
-            nextstate = match_enum(State, edge[3])
+            nextstate = match_enum(State,   edge[2])
 
             # New: always use command for the edges
             # b/c actions are redundant w/ state
             label = command
+            if command == "NoCommand": label = ""
 
             print(f'  {quote(curstate):11} -> {quote(nextstate):11} [label={quote(label)}];')
         print('}\n')
 
-
-
-    # FIXME/TODO def dot() etc.
+    
 
 ########################################################################
 class Queue():

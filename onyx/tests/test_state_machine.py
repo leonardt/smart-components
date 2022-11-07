@@ -87,44 +87,44 @@ ANY = Command.NoCommand
 # Basic state machine common to all SRAM configurations
 # Covers MemOn state and its children (read and write)
 sm_read_and_write = (
-    (State.MemOn,     Command.PowerOff,   Action.GetCommand,    State.MemOff),
+    (State.MemOn,     Command.PowerOff,       State.MemOff),
 
-    (State.MemOn,     Command.Read,       Action.GetCommand,    State.ReadAddr),
-    (State.ReadAddr,  ANY,                Action.GetAddr,       State.ReadData),
-    (State.ReadData,  ANY,                Action.ReadData,      State.MemOn),
+    (State.MemOn,     Command.Read,           State.ReadAddr),
+    (State.ReadAddr,  ANY,                    State.ReadData),
+    (State.ReadData,  ANY,                    State.MemOn),
 
-    (State.MemOn,     Command.Write,      Action.GetCommand,    State.WriteAddr),
-    (State.WriteAddr, ANY,                Action.GetAddr,       State.WriteData),
-    (State.WriteData, ANY,                Action.WriteData,     State.MemOn),
+    (State.MemOn,     Command.Write,          State.WriteAddr),
+    (State.WriteAddr, ANY,                    State.WriteData),
+    (State.WriteData, ANY,                    State.MemOn),
 )
 
 # Init, no redundancy
 sm_init = (
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
+    (State.MemInit,   ANY,                    State.MemOff),
 )
 
 # Init for SRAMs with redundancy
 sm_init_red = (
-    (State.MemInit,   ANY,                Action.NoAction,      State.MemOff),
-    (State.MemOn,     Command.RedOn,      Action.GetCommand,    State.MemOn),
-    (State.MemOn,     Command.RedOff,     Action.GetCommand,    State.MemOn),
+    (State.MemInit,   ANY,                    State.MemOff),
+    (State.MemOn,     Command.RedOn,          State.MemOn),
+    (State.MemOn,     Command.RedOff,         State.MemOn),
 )
 
 # MemOn for plain SRAMs
 sm_memoff = (
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.MemOn),
+    (State.MemOff,    Command.PowerOn,        State.MemOn),
 )
 
 # MemOn for SRAMs with multiple modes
 sm_memoff_ack = (
-    (State.MemOff,    Command.PowerOn,    Action.GetCommand,    State.SetMode),
-    (State.SetMode,   Command.PowerOn,    Action.SetMode,       State.MemOn),
+    (State.MemOff,    Command.PowerOn,        State.SetMode),
+    (State.SetMode,   Command.PowerOn,        State.MemOn),
 
-    (State.MemOff,    Command.DeepSleep,  Action.GetCommand,    State.SetMode),
-    (State.SetMode,   Command.DeepSleep,  Action.SetMode,       State.MemOff),
+    (State.MemOff,    Command.DeepSleep,      State.SetMode),
+    (State.SetMode,   Command.DeepSleep,      State.MemOff),
 
-    (State.MemOff,    Command.TotalRetention,  Action.GetCommand, State.SetMode),
-    (State.SetMode,   Command.TotalRetention,  Action.SetMode,    State.MemOff),
+    (State.MemOff,    Command.TotalRetention,   State.SetMode),
+    (State.SetMode,   Command.TotalRetention,   State.MemOff),
 )
 
 # Prep a state machine for each different SRAM variety
