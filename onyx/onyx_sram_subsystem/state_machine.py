@@ -33,12 +33,11 @@ debug("Begin importing python packages...")
 import sys
 import magma as m
 import hwtypes as hw
+from .mock_mem import SRAMSingle
 debug("* Done importing python packages...")
-
 
 ADDR_WIDTH = 8
 DATA_WIDTH = 8
-
 
 #------------------------------------------------------------------------
 # State Machine generator setup
@@ -114,11 +113,10 @@ def match_enum(enum_class, enum_value):
           match_enum(State,  State.MemOff)    => "MemOff"
           match_enum(Action, Action.ReadData) => "ReadData"
     '''
-    for i in dir(enum_class):
-        val = getattr(enum_class, i)
-        if type(val) == type(enum_value):
-            if int(val) == int(enum_value): return i
-
+    for cls in enum_class.mro():
+        for name,val in cls.__dict__.items():
+            if type(val) == type(enum_value):
+                if int(val) == int(enum_value): return name
 
 ##############################################################################
 # Example of input to StateMachineGraph():
@@ -435,22 +433,25 @@ class StateMachine(CoopGenerator):
         self.MemDefinition = MemDefinition
         self.smg = state_machine_graph
 
-        if 'num_r_cols' in dir(self.MemDefinition):
-            self.num_r_cols = MemDefinition.num_r_cols
-            self.has_redundancy = True
-        else:
-            self.num_r_cols = 1    # Kind of a hack but if it works why not I guess
+        self.num_r_cols = getattr(MemDefinition, 'num_r_cols', None)
+        if self.num_r_cols is None:
             self.has_redundancy = False
-
-        if 'wake_ack' in dir(MemDefinition):
-            self.needs_wake_ack = True
-            self.wake_ack = self.MemDefinition.wake_ack
+            self.num_r_cols = 1
         else:
+            self.has_redundancy = True
+            
+        self.wake_ack = getattr(MemDefinition, 'wake_ack', None)
+        if self.wake_ack is None:
             self.needs_wake_ack = False
-            self.wake_ack = hw.Bit(0) # dummy value
+            self.wake_ack = hw.Bit(0)
+        else:
+            self.needs_wake_ack = True
 
         # Single-port SRAM has 'ADDR', double-port has 'RADDR/WADDR'
-        self.is_single = ('ADDR' in dir(MemDefinition))
+        # self.is_single = ('ADDR' in dir(MemDefinition))
+        # self.is_single = hasattr(MemDefinition, 'ADDR')
+        self.is_single = isinstance(MemDefinition, SRAMSingle)
+
 
         # print(dir(MemDefinition))        # 'RCE', 'RCF0A', 'RCF1A'
         # print( getattr(MemDefinition, 'IO') )
@@ -458,18 +459,21 @@ class StateMachine(CoopGenerator):
 
         # FIXME yeah, this whole connect_RCF mechanism is not great...
         # Note ORDER IS IMPORTANT here
-        dm = dir(MemDefinition)
+        # dm = dir(MemDefinition)
 
-        if   'RCF2A' in dm: connect_RCFs = connect_RCFs_3col
-        elif 'RCF1A' in dm: connect_RCFs = connect_RCFs_2col
-        elif 'RCF0A' in dm: connect_RCFs = connect_RCFs_1col
-        else:               connect_RCFs = connect_RCFs_pass
+        RCF2 = (self.num_r_cols == 3)
+        RCF1 = (self.num_r_cols == 2)
+        RCF0 = (self.num_r_cols == 1) and (self.has_redundancy)
+
+        if   RCF2: connect_RCFs = connect_RCFs_3col
+        elif RCF1: connect_RCFs = connect_RCFs_2col
+        elif RCF0: connect_RCFs = connect_RCFs_1col
+        else:      connect_RCFs = connect_RCFs_pass
 
         self.n_redundancy_bits = 1
-        if   'RCF2A' in dm: self.n_redundancy_bits = 3 # not sure this is correct...
-        elif 'RCF1A' in dm: self.n_redundancy_bits = 2
-        elif 'RCF0A' in dm: self.n_redundancy_bits = 1
-
+        if   RCF2: self.n_redundancy_bits = 3 # not sure this is correct...
+        elif RCF1: self.n_redundancy_bits = 2
+        elif RCF0: self.n_redundancy_bits = 1
 
         super().__init__(**kwargs)
 
