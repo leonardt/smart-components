@@ -508,6 +508,12 @@ class StateMachine(CoopGenerator):
 
             current_state=m.Out(m.Bits[State.nbits]),
         )
+        if hasattr(self.MemDefinition, 'current_state'):
+            self.io += m.IO(mem_current_state=m.Out(type(self.MemDefinition.current_state)))
+
+        if self.has_redundancy:
+            self.io += m.IO(RCF0A=m.Out(type(self.MemDefinition.RCF0A)))
+            self.io += m.IO(RCE=m.Out(m.Bits[self.num_r_cols]))
 
     def _decl_components(self, **kwargs):
         super()._decl_components(**kwargs)
@@ -555,7 +561,6 @@ class StateMachine(CoopGenerator):
         # Instantiate SRAM using given definition
         self.mem = self.MemDefinition()
         if hasattr(self.mem, 'current_state'):
-            self.io += m.IO(mem_current_state=m.Out(type(self.mem.current_state)))
             self.io.mem_current_state @= self.mem.current_state
 
         # Formerly used registers o_reg, r_reg, and s_reg for IO.
@@ -813,9 +818,7 @@ class StateMachine(CoopGenerator):
         self.io.mem_data_reg_CE_out @= self.mem_data_reg.CE.value()
         self.io.mem_addr_reg_CE_out @= self.mem_addr_reg.CE.value()
         if self.has_redundancy:
-            self.io += m.IO(RCF0A=m.Out(type(self.mem.RCF0A)))
             self.io.RCF0A @= self.mem.RCF0A.value()
-            self.io += m.IO(RCE=m.Out(m.Bits[self.num_r_cols]))
             self.io.RCE @= self.mem.RCE.value()
 
 
