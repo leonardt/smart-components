@@ -605,22 +605,21 @@ class StateMachine(CoopGenerator):
 
         # Init reg allows one-time reg initialization etc.
         init = self.initreg.O
+        self.initreg.I @= init
+
         with m.when(init == m.Bits[1](1)):
             addr_to_mem     @= 13  # changes on read, write request
-            data_from_mem   = 14  # magically changes when addr_to_mem changes
-            data_to_client  = 15
-            self.DataToClient.Reg.I @= data_to_client
+            # data_from_mem   = 14  # magically changes when addr_to_mem changes
+            self.DataToClient.Reg.I @= 15
 
             # So we only do this ONCE on start-up
-            init_next = m.Bits[1](0)
+            self.initreg.I = m.Bits[1](0)
 
             # self.power_on()
             self.connect_ds_pg(0, 0)
 
         with m.otherwise():
             addr_to_mem @= cur_addr
-
-        self.initreg.I @= init_next
 
         # Convenient shortcuts
         cur_state = self.state_reg.O
@@ -691,15 +690,15 @@ class StateMachine(CoopGenerator):
         # State.MemOff + Command.PowerOn => State.SetMode => Action.SetMode()
         with m.elsewhen(cur_state == State.SetMode):
 
+            ack = m.Bits[1]()
+            ack @= 0
             with m.when(cfc.data == Command.DeepSleep):
                 # self.goto_deep_sleep()
-                ack = m.Bits[1](0)
                 self.connect_ds_pg(1, 1)
             with m.elsewhen(cfc.data == Command.TotalRetention):
-                ack = m.Bits[1](0)
                 self.connect_ds_pg(0, 1)
             with m.elsewhen(cfc.data == Command.PowerOn):
-                ack = m.Bits[1](1)
+                ack @= 1
 
             # Setup
             # data_to_client = self.send_wake_ack()
@@ -731,7 +730,7 @@ class StateMachine(CoopGenerator):
 
             self.DataFromClient.ready @= READY        # Ready for new data
             with m.when(dfc.is_valid()):
-                addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
+                addr_to_mem @= dfc.data   # Get data (mem addr) from client requesting read
                 self.DataFromClient.ready @= ~READY   # Got data, not yet ready for next data
                 next_state = self.smg.get_next_state(cur_state)
                 self.state_reg.I @= next_state
@@ -769,8 +768,7 @@ class StateMachine(CoopGenerator):
             # Setup
             self.DataToClient.Reg.CE @= ENABLE
 
-            data_to_client = self.mem.RDATA
-            self.DataToClient.Reg.I @= data_to_client
+            self.DataToClient.Reg.I @= self.mem.RDATA
 
             self.DataToClient.valid @= VALID
 
