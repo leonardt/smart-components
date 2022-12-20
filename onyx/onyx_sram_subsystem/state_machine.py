@@ -613,7 +613,7 @@ class StateMachine(CoopGenerator):
             self.DataToClient.Reg.I @= 15
 
             # So we only do this ONCE on start-up
-            self.initreg.I = m.Bits[1](0)
+            self.initreg.I @= m.Bits[1](0)
 
             # self.power_on()
             self.connect_ds_pg(0, 0)
