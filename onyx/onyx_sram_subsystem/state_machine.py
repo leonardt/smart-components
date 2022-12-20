@@ -90,7 +90,7 @@ class State():
     nbits = (num_states).bit_length()
     #----------------------------------
 
-    # FIXME/NOTE I think everything breaks if MemInit != 0 
+    # FIXME/NOTE I think everything breaks if MemInit != 0
     # and/or MemInit is not first state in state machine...
 
     MemInit   = m.Bits[nbits](i); i=i+1 # 0
@@ -120,7 +120,7 @@ def match_enum(enum_class, enum_value):
 
 ##############################################################################
 # Example of input to StateMachineGraph():
-# 
+#
 # ANY = Command.NoCommand
 # mygraph = (
 #     (State.MemInit,   ANY,                State.MemOff),
@@ -152,7 +152,7 @@ class StateMachineGraph():
 
     def get_next_state(self, cur_state, command=Command.NoCommand):
         '''If cur_state and command both match, return target state'''
-        state = cur_state # default    
+        state = cur_state # default
         for e in self.graph:
             e_command  = self.command(e)
             e_curstate = self.curstate(e)
@@ -173,7 +173,7 @@ class StateMachineGraph():
         '''
         Given a graph in StateMachine format, build a dot input file.
         # Example: build_dot_graph(mygraph) =>
-        # 
+        #
         #     digraph Diagram { node [shape=box];
         #       "MemInit"   -> "MemOff"    [label="NoCommand"];
         #       "MemOff"    -> "SetMode"   [label="PowerOn"];
@@ -203,7 +203,7 @@ class StateMachineGraph():
             print(f'  {quote(curstate):11} -> {quote(nextstate):11} [label={quote(label)}];')
         print('}\n')
 
-    
+
 
 ########################################################################
 class Queue():
@@ -219,7 +219,7 @@ class Queue():
             # Initialize to not ready, not valid
             self.ReadyReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
             self.ReadyReg.name = name+"_ready" ; # E.g. "DataFromClient_ready"
-            
+
             self.ValidReg = m.Register(T=m.Bits[1], has_enable=False, init=m.Bits[1](0))()
             self.ValidReg.name = name+"_valid" ; # E.g. "DataFromClient_valid"
 
@@ -240,7 +240,7 @@ class RcvQueue(Queue):
 
        # Instantiate a transmit queue and tell it what signals
        # client will use for communication
-       
+
        DataFromClient = RcvQueue("DataFromClient", nbits=16,
            data_in   = self.io.receive,
            valid_in  = self.io.receive_valid,
@@ -248,7 +248,7 @@ class RcvQueue(Queue):
            );
 
        # To read data from queue:
-       
+
        # 1. Set ready bit for queue to show that we are ready for data.
        DataFromClient.ready @= ready_for_dfc
        ready_for_dfc = m.Bits[1](1)
@@ -258,7 +258,7 @@ class RcvQueue(Queue):
 
     '''
     # set ReadyValid TRUE to use readyvalid protocol, otherwise it's just a register
-    def __init__(self, name, nbits, readyvalid=False, 
+    def __init__(self, name, nbits, readyvalid=False,
                  data_in=None, valid_in=None, ready_out=None
     ):
         Queue.__init__(self, name, nbits, readyvalid)
@@ -291,7 +291,7 @@ class XmtQueue(Queue):
 
        # Instantiate a transmit queue and tell it what signals
        # client will use for communication
-       
+
        DataToClient = XmtQueue("DataToClient", nbits=16,
            data_out  = self.io.send,
            valid_out = self.io.dtcq_valid,
@@ -299,7 +299,7 @@ class XmtQueue(Queue):
            );
 
        # To send data to queue:
-       
+
        # 1. Set the valid bit and write the data to the queue
        dtcq_valid = m.Bits[1](1)
        DataToClient.data = m.Bits[16](0x1234)
@@ -309,7 +309,7 @@ class XmtQueue(Queue):
 
     '''
     # set ReadyValid TRUE to use readyvalid protocol, otherwise it's just a register
-    def __init__(self, name, nbits, readyvalid=False, 
+    def __init__(self, name, nbits, readyvalid=False,
                  data_out=None, valid_out=None, ready_in=None
     ):
         Queue.__init__(self, name, nbits, readyvalid)
@@ -412,7 +412,7 @@ class StateMachine(CoopGenerator):
             new_state = self.smg.get_next_state(cur_state, command=cur_cmd)
 
             next_state = cond.ite(new_state, cur_state)
-            v          = cond.ite(~VALID,  VALID) 
+            v          = cond.ite(~VALID,  VALID)
             e          = cond.ite(~ENABLE, ENABLE)
 
             return (m.bits(self.mem.wake_ack, DATA_WIDTH), v, e, next_state)
@@ -439,7 +439,7 @@ class StateMachine(CoopGenerator):
             self.num_r_cols = 1
         else:
             self.has_redundancy = True
-            
+
         self.wake_ack = getattr(MemDefinition, 'wake_ack', None)
         if self.wake_ack is None:
             self.needs_wake_ack = False
@@ -469,6 +469,7 @@ class StateMachine(CoopGenerator):
         elif RCF1: connect_RCFs = connect_RCFs_2col
         elif RCF0: connect_RCFs = connect_RCFs_1col
         else:      connect_RCFs = connect_RCFs_pass
+        self.connect_RCFs = connect_RCFs
 
         self.n_redundancy_bits = 1
         if   RCF2: self.n_redundancy_bits = 3 # not sure this is correct...
@@ -497,8 +498,13 @@ class StateMachine(CoopGenerator):
             send       = m.Out(m.Bits[DATA_WIDTH]),
             send_ready = m.In(m.Bits[1]),
             send_valid = m.Out(m.Bits[1]),
-            # dtcq_valid = m.In(m.Bits[1]),  TBD
-            # dtcq_ready = m.Out(m.Bits[1]), TBD
+            dfcq_valid = m.Out(m.Bits[1]),
+            dfcq_enable = m.Out(m.Bit),
+            dtcq_ready = m.Out(m.Bits[1]),
+            mem_addr_reg_out = m.Out(m.Bits[DATA_WIDTH]),
+            mem_addr_reg_CE_out = m.Out(m.Bit),
+            mem_data_reg_out = m.Out(m.Bits[DATA_WIDTH]),
+            mem_data_reg_CE_out = m.Out(m.Bit),
 
             current_state=m.Out(m.Bits[State.nbits]),
         )
@@ -535,6 +541,7 @@ class StateMachine(CoopGenerator):
             has_enable=True,
         )()
         self.mem_addr_reg.name = "mem_addr_reg"
+        self.io.mem_addr_reg_out @= self.mem_addr_reg.O
 
         # mem_data reg holds data from client for writing to SRAM
         self.mem_data_reg = m.Register(
@@ -542,6 +549,7 @@ class StateMachine(CoopGenerator):
             has_enable=True,
         )()
         self.mem_data_reg.name = "mem_data_reg"
+        self.io.mem_data_reg_out @= self.mem_data_reg.O
 
         # FIXME move this up *before* any usage of self.mem :(
         # Instantiate SRAM using given definition
@@ -591,218 +599,220 @@ class StateMachine(CoopGenerator):
         # indentation even on comments, also should avoid e.g. one-line if-then
         # ('if a: b=1'), multiple statements on one line separated by semicolon etc.
 
-        @m.inline_combinational()
-        def controller():
-            cur_addr = self.mem_addr_reg.O
+        cur_addr = self.mem_addr_reg.O
+        addr_to_mem = type(cur_addr).undirected_t()
+        self.DataToClient.Reg.I @= self.DataToClient.Reg.O
 
-            # Init reg allows one-time reg initialization etc.
-            init = self.initreg.O
-            if init == m.Bits[1](1):
-                addr_to_mem     = 13  # changes on read, write request
-                data_from_mem   = 14  # magically changes when addr_to_mem changes
-                data_to_client  = 15
-                
-                # So we only do this ONCE on start-up
-                init_next = m.Bits[1](0)
+        # Init reg allows one-time reg initialization etc.
+        init = self.initreg.O
+        with m.when(init == m.Bits[1](1)):
+            addr_to_mem     @= 13  # changes on read, write request
+            data_from_mem   = 14  # magically changes when addr_to_mem changes
+            data_to_client  = 15
+            self.DataToClient.Reg.I @= data_to_client
 
-                # self.power_on()
-                ds = hw.Bit(0); pg = hw.Bit(0)
+            # So we only do this ONCE on start-up
+            init_next = m.Bits[1](0)
 
-            else:
-                addr_to_mem = cur_addr
+            # self.power_on()
+            self.connect_ds_pg(0, 0)
 
-            self.initreg.I @= init_next
+        with m.otherwise():
+            addr_to_mem @= cur_addr
 
-            # Convenient shortcuts
-            cur_state = self.state_reg.O
+        self.initreg.I @= init_next
 
-            # Constants
-            READY = m.Bits[1](1)
-            VALID = m.Bits[1](1)
-            ENABLE = True          # ??
+        # Convenient shortcuts
+        cur_state = self.state_reg.O
 
-            # Reset all ready-valid signals that we control.
-            # Reset ready signals in FROM queues, valid signals in TO queues
-            ready_for_dfc = ~READY     # Not ready for input from client
-            ready_for_cmd = ~READY     # Not ready for command from client
-            dtc_valid     = ~VALID     # Not ready to send data to client
+        # Constants
+        READY = m.Bits[1](1)
+        VALID = m.Bits[1](1)
+        ENABLE = True          # ??
 
-            addr_to_mem_enable    = ~ENABLE
-            dtc_enable            = ~ENABLE
-            cmd_enable            = ~ENABLE
+        # Reset all ready-valid signals that we control.
+        # Reset ready signals in FROM queues, valid signals in TO queues
+        self.DataFromClient.ready @= ~READY     # Not ready for input from client
+        self.CommandFromClient.ready @= ~READY     # Not ready for command from client
+        self.DataToClient.valid @= ~VALID     # Not ready to send data to client
 
-            cfc = self.CommandFromClient
-            dfc = self.DataFromClient
-            dtc = self.DataToClient
+        self.mem_addr_reg.CE @= ~ENABLE
+        self.DataToClient.Reg.CE @= ~ENABLE
 
-            # Default is to stay in the same state as before
-            next_state = cur_state
-                
-            if (cur_state == State.MemOff) | (cur_state == State.MemOn):
+        # "to" MessageQueue inputs
+        self.CommandFromClient.Reg.CE @= ~ENABLE
 
-                # Enable command reg, ready cmd queue
-                cmd_enable = ENABLE
-                ready_for_cmd = READY
+        cfc = self.CommandFromClient
+        dfc = self.DataFromClient
+        self.io.dfcq_valid @= dfc.valid
+        dtc = self.DataToClient
+        self.io.dtcq_ready @= dtc.ready
 
-                # E.g. cur_state==MemOff and cfc.data==PowerOn => goto MemOn
-                if cfc.is_valid():
+        # Default is to stay in the same state as before
+        self.state_reg.I @= cur_state
 
-                    if cfc.data == Command.RedOn:
-                        redundancy_data = m.Bits[self.num_r_cols](-1)
+        self.mem.WEn @= 0
+        self.mem.REn @= 0
+        self.connect_ds_pg(0, 0)
+        self.connect_RCE(self.get_redreg_out())
+        self.mem_data_reg.CE @= ~ENABLE
+        self.DataFromClient.Reg.CE @= ~ENABLE
 
-                    elif cfc.data == Command.RedOff:
-                        redundancy_data = m.Bits[self.num_r_cols]( 0)
+        with m.when((cur_state == State.MemOff) | (cur_state == State.MemOn)):
 
-                    else:
-                        redundancy_data = self.get_redreg_out()
+            # Enable command reg, ready cmd queue
+            self.CommandFromClient.Reg.CE @= ENABLE
+            self.CommandFromClient.ready @= READY
 
-                    new_state = self.smg.get_next_state( cur_state, cfc.data)
-                    if (new_state != cur_state):
-                        ready_for_cmd = ~READY     # Got data, not yet ready for next command
-                        next_state = new_state
+            # E.g. cur_state==MemOff and cfc.data==PowerOn => goto MemOn
+            with m.when(cfc.is_valid()):
 
-            # FIXME remaining elif's should have more parallel structure :(
+                with m.when(cfc.data == Command.RedOn):
+                    self.connect_RCE(-1)
 
-            elif cur_state == State.MemInit:
+                with m.elsewhen(cfc.data == Command.RedOff):
+                    self.connect_RCE(0)
 
-                # FIXME should use the get_next _state!!!
-                # next_state = self.smg.get_next_state(cur_state)
-                next_state = State.MemOff
+                new_state = self.smg.get_next_state( cur_state, cfc.data)
+                with m.when(new_state != cur_state):
+                    self.CommandFromClient.ready @= ~READY     # Got data, not yet ready for next command
+                    self.state_reg.I @= new_state
 
+        # FIXME remaining elif's should have more parallel structure :(
 
+        with m.elsewhen(cur_state == State.MemInit):
 
-            # State.MemOff + Command.PowerOn => State.SetMode => Action.SetMode()
-            elif cur_state == State.SetMode:
-
-                if cfc.data == Command.DeepSleep:
-                    # self.goto_deep_sleep()
-                    ds = hw.Bit(1); pg = hw.Bit(1); ack = m.Bits[1](0)
-                elif cfc.data == Command.TotalRetention:
-                    ds = hw.Bit(0); pg = hw.Bit(1); ack = m.Bits[1](0)
-                elif cfc.data == Command.PowerOn:
-                    ds = hw.Bit(0); pg = hw.Bit(0); ack = m.Bits[1](1)
-
-                # Setup
-                # data_to_client = self.send_wake_ack()
-                # dtc READY means they got the data and we can all move on
-                (
-                    data_to_client, 
-                    dtc_valid,
-                    dtc_enable,
-                    next_state,
-                ) = self.send_wake_ack(
-                    dtc.is_ready() & self.got_wake_ack(ack),
-                    cur_state,
-                    cur_cmd=cfc.data,
-                )
-
-            # State ReadAddr
-            elif (cur_state == State.ReadAddr) | (cur_state == State.WriteAddr):
-
-                # Setup
-                dfc_enable         = ENABLE
-                addr_to_mem_enable = ENABLE
-
-                # Get read-address info from client/testbench
-                # If successful, go to state ReadData
-
-                ready_for_dfc = READY        # Ready for new data
-                if dfc.is_valid():
-                    addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
-                    ready_for_dfc = ~READY   # Got data, not yet ready for next data
-                    next_state = self.smg.get_next_state(cur_state)
+            # FIXME should use the get_next _state!!!
+            # next_state = self.smg.get_next_state(cur_state)
+            self.state_reg.I @= State.MemOff
 
 
-            # State WriteData is similar to ReadAddr/WriteAddr
-            elif cur_state == State.WriteData:
 
-                # Enable WRITE, disable READ
-                SRAM_re = m.Enable(0)
-                SRAM_we = m.Enable(1)
+        # State.MemOff + Command.PowerOn => State.SetMode => Action.SetMode()
+        with m.elsewhen(cur_state == State.SetMode):
 
-                # Get data from client, write it to SRAM
-                # If successful, go to state MemOn
+            with m.when(cfc.data == Command.DeepSleep):
+                # self.goto_deep_sleep()
+                ack = m.Bits[1](0)
+                self.connect_ds_pg(1, 1)
+            with m.elsewhen(cfc.data == Command.TotalRetention):
+                ack = m.Bits[1](0)
+                self.connect_ds_pg(0, 1)
+            with m.elsewhen(cfc.data == Command.PowerOn):
+                ack = m.Bits[1](1)
 
-                # Setup
-                dfc_enable = ENABLE
-                data_to_mem_enable = ENABLE
+            # Setup
+            # data_to_client = self.send_wake_ack()
+            # dtc READY means they got the data and we can all move on
+            (
+                data_to_client,
+                dtc_valid,
+                dtc_enable,
+                next_state,
+            ) = self.send_wake_ack(
+                dtc.is_ready() & self.got_wake_ack(ack),
+                cur_state,
+                cur_cmd=cfc.data,
+            )
+            self.state_reg.I @= next_state
+            self.DataToClient.Reg.I @= data_to_client
+            self.DataToClient.valid @= dtc_valid
+            self.DataToClient.Reg.CE @= dtc_enable
 
-                ready_for_dfc = READY        # Ready for new data
-                if dfc.is_valid():
-                    # FIXME hm so it looks like data_to_mem is never used,
-                    # except if we delete it we have to eliminate the fault
-                    # test that checks to see that it got set !? :(
-                    data_to_mem = dfc.data   # Get data-to-write-to-SRAM from client
+        # State ReadAddr
+        with m.elsewhen((cur_state == State.ReadAddr) | (cur_state == State.WriteAddr)):
 
-                    # FIXME should probably turn WE on and off to prevent data shmearing
+            # Setup
+            self.DataFromClient.Reg.CE @= ENABLE
+            self.mem_addr_reg.CE @= ENABLE
 
-                    SRAM_addr  = addr_to_mem[0:ADDR_WIDTH]    # Address from prev step
-                    SRAM_wdata = dfc.data             # Data from client
-                    ready_for_dfc = ~READY            # Not yet ready for next data
-                    next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
+            # Get read-address info from client/testbench
+            # If successful, go to state ReadData
 
-
-            # State ReadData
-            elif cur_state == State.ReadData:
-
-                # Enable READ, disable WRITE
-                SRAM_re = m.Enable(1)
-                SRAM_we = m.Enable(0)
-
-                # Setup
-                dtc_enable = ENABLE
-
-                SRAM_addr = addr_to_mem[0:ADDR_WIDTH]   # Address from prev step
-                data_to_client = self.mem.RDATA
-
-                dtc_valid = VALID
-
-                # dtc READY means they got the data and we can all move on
-                if dtc.is_ready():
-                    next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
-
-                    # Reset
-                    dtc_valid  = ~VALID
-                    dtc_enable = ~ENABLE
+            self.DataFromClient.ready @= READY        # Ready for new data
+            with m.when(dfc.is_valid()):
+                addr_to_mem = dfc.data   # Get data (mem addr) from client requesting read
+                self.DataFromClient.ready @= ~READY   # Got data, not yet ready for next data
+                next_state = self.smg.get_next_state(cur_state)
+                self.state_reg.I @= next_state
 
 
-            # FIXME/TODO these could both be simply 'self.connect_ad(SRAM_addr, SRAM_wdata)'
-            # self.mem.ADDR  @= SRAM_addr
-            self.connect_addr(SRAM_addr)
-            self.mem.WDATA @= SRAM_wdata
+        # State WriteData is similar to ReadAddr/WriteAddr
+        with m.elsewhen(cur_state == State.WriteData):
 
-            # CEn is active low :(
-            # REn and WEn are both active high :(
-            self.mem.CEn   @= m.Enable(0)
-            self.mem.WEn   @= SRAM_we
-            self.mem.REn   @= SRAM_re
+            # Enable WRITE, disable READ
+            self.mem.WEn   @= 1
 
-            # self.mem.deep_sleep @= ds; self.mem.power_gate @= pg
-            self.connect_ds_pg(ds, pg)
+            # Get data from client, write it to SRAM
+            # If successful, go to state MemOn
 
-            # FIXME why is one of these "self" and the other one not?
-            self.connect_RCE(redundancy_data)
-            connect_RCFs(self.mem)
+            # Setup
+            self.DataFromClient.Reg.CE @= ENABLE
+            self.mem_data_reg.CE  @= ENABLE
 
-            # Wire up our shortcuts
-            self.state_reg.I      @= next_state
+            self.DataFromClient.ready @= READY        # Ready for new data
+            with m.when(dfc.is_valid()):
 
-            self.mem_addr_reg.I   @= addr_to_mem
-            self.mem_addr_reg.CE  @= addr_to_mem_enable
+                # FIXME should probably turn WE on and off to prevent data shmearing
 
-            self.mem_data_reg.I   @= data_to_mem
-            self.mem_data_reg.CE  @= data_to_mem_enable
+                self.DataFromClient.ready @= ~READY            # Not yet ready for next data
+                next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
+                self.state_reg.I @= next_state
 
-            # "to" MessageQueue inputs
-            self.CommandFromClient.ready  @= ready_for_cmd
-            self.CommandFromClient.Reg.CE @= cmd_enable
 
-            self.DataFromClient.ready    @= ready_for_dfc
-            self.DataFromClient.Reg.CE   @= dfc_enable
+        # State ReadData
+        with m.elsewhen(cur_state == State.ReadData):
 
-            self.DataToClient.Reg.I      @= data_to_client
-            self.DataToClient.valid      @= dtc_valid
-            self.DataToClient.Reg.CE     @= dtc_enable
+            # Enable READ, disable WRITE
+            self.mem.REn   @= 1
+
+            # Setup
+            self.DataToClient.Reg.CE @= ENABLE
+
+            data_to_client = self.mem.RDATA
+            self.DataToClient.Reg.I @= data_to_client
+
+            self.DataToClient.valid @= VALID
+
+            # dtc READY means they got the data and we can all move on
+            with m.when(dtc.is_ready()):
+                next_state = self.smg.get_next_state(cur_state) # GOTO State.MemOn
+                self.state_reg.I @= next_state
+
+                # Reset
+                self.DataToClient.valid @= ~VALID
+                self.DataToClient.Reg.CE @= ~ENABLE
+
+
+        # FIXME/TODO these could both be simply 'self.connect_ad(SRAM_addr, SRAM_wdata)'
+        # self.mem.ADDR  @= SRAM_addr
+        self.connect_addr(addr_to_mem[0:ADDR_WIDTH])  # Address from prev step
+        self.mem.WDATA @= dfc.data                    # Data from client
+
+
+        # CEn is active low :(
+        # REn and WEn are both active high :(
+        self.mem.CEn   @= m.Enable(0)
+
+        # self.mem.deep_sleep @= ds; self.mem.power_gate @= pg
+
+        # FIXME why is one of these "self" and the other one not?
+        self.connect_RCFs(self.mem)
+
+        # Wire up our shortcuts
+
+        self.mem_addr_reg.I   @= addr_to_mem
+
+        # FIXME hm so it looks like data_to_mem is never used,
+        # except if we delete it we have to eliminate the fault
+        # test that checks to see that it got set !? :(
+        self.mem_data_reg.I   @= dfc.data
+
+        self.io.dfcq_enable @= dfc.Reg.CE.value()
+        self.io.mem_data_reg_CE_out @= self.mem_data_reg.CE.value()
+        self.io.mem_addr_reg_CE_out @= self.mem_addr_reg.CE.value()
+
+
 
 
 # FIXME (below) what even is this

@@ -48,7 +48,7 @@ SRAM_DATA_WIDTH = 8
 
 def build_verilog(smg):
     FSM = StateMachine(MemDefinition, smg)
-    m.compile("steveri/tmpdir/fsm", FSM, output="coreir-verilog")
+    m.compile("steveri/tmpdir/fsm", FSM, output="mlir-verilog")
 
 def show_verilog():
     with open('steveri/tmpdir/fsm.v', 'r') as f: print(f.read())
@@ -144,7 +144,7 @@ def makedot(filename, graph):
 
     filename_dot = filename + ".dot"
     filename_pdf = filename + ".pdf"
-    
+
 
     # f = open('build/deleteme.txt', 'w')
     f = open(filename_dot, 'w')
@@ -153,7 +153,7 @@ def makedot(filename, graph):
     StateMachineGraph.build_dot_graph(graph)
     sys.stdout = orig_stdout
     f.close()
-    
+
     # FIXME need a catch here or something because in general this will not work!!!
     subprocess.run(f'dot {filename_dot} -Tpdf > {filename_pdf}', shell=True)
 
@@ -198,7 +198,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         SRAM_ADDR_WIDTH, SRAM_DATA_WIDTH, debug=True, **params
     )
 
-    # SRAM name, e.g. 'SRAMDM_inst0'. See mock_mem.py. E.g. 
+    # SRAM name, e.g. 'SRAMDM_inst0'. See mock_mem.py. E.g.
     # f=frozenset((SRAMModalMixin, ))
     # SRAM_FEATURE_TABLE[SRAMSingle][f].__name__ => 'SRAMSM'
     # => mock_name = 'SRAMSM_inst0'
@@ -259,7 +259,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         tester.circuit.offer_valid = m.Bits[1](0)
 
 
-    def send_and_check_dfc_data(dval, reg_name, reg):
+    def send_and_check_dfc_data(dval, reg_name, reg, reg_CE):
         '''
         Send data to controller's DataFromClient (dfc) reg
         and verify that controller stored it in its reg 'reg_name'
@@ -280,16 +280,16 @@ def test_state_machine_fault(base, mixins, graph, params):
         # After which valid signal and valid data should be avail on MC input regs
         prlog9("...after one cy valid sig should be avail internally\n")
         cycle()
-        tester.circuit.DataFromClient_valid.O.expect(VALID)
+        tester.circuit.dfcq_valid.expect(VALID)
 
         # prlog9("  BEFORE: mem_addr_reg is %d\n", tester.circuit.mem_addr_reg.O)
-        prlog9(f"  BEFORE: {reg_name}_reg is %d\n", reg.O)
+        prlog9(f"  BEFORE: {reg_name}_reg is %d\n", reg)
 
         # Sanity check of reg-enable signal
         prlog9("...CE better be active for dfc (CE=1)\n")
-        tester.circuit.DataFromClient.CE.expect(1)
+        tester.circuit.dfcq_enable.expect(1)
         prlog9("...CE better be active for internal reg too (CE=1)\n")
-        reg.CE.expect(1)
+        reg_CE.expect(1)
 
         # Reset valid signal
         prlog9("...reset valid signal\n")
@@ -300,12 +300,12 @@ def test_state_machine_fault(base, mixins, graph, params):
         cycle()
 
         # prlog9("  AFTER: mem_addr_reg is %d (762)\n", tester.circuit.mem_addr_reg.O)
-        prlog9(f"  AFTER: {reg_name}_reg is %d (762)\n", reg.O)
+        prlog9(f"  AFTER: {reg_name}_reg is %d (762)\n", reg)
 
         # Check latched data for correctness
         msg = f"MC received {reg_name} data '%d' ==? {dval} (0x{dval:x})"
-        prlog9(f"{msg}\n", reg.O)
-        reg.O.expect(dval)
+        prlog9(f"{msg}\n", reg)
+        reg.expect(dval)
         prlog9(f"...yes! passed initial {reg_name} data check\n")
 
 
@@ -315,7 +315,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         # We expect that sender has valid data
         # tester.print("beep boop ...expect send_valid TRUE...\n")
         # tester.circuit.send_valid.expect(VALID)
- 
+
         # Tell MC that we are ready to read the data
         prlog9("...sending ready signal\n")
         tester.circuit.send_ready = READY
@@ -324,21 +324,21 @@ def test_state_machine_fault(base, mixins, graph, params):
         # After which ready signal and valid data should be avail on MC input regs
         prlog9("...after one cy ready sig should be avail internally\n")
         cycle()
-        tester.circuit.DataToClient_ready.O.expect(READY)
+        tester.circuit.dtcq_ready.expect(READY)
 
         # Wait one complete clock cycle for...what...?
         cycle()
 
         # See what we got / check latched data for correctness
-        reg = tester.circuit.DataToClient
+        send = tester.circuit.send
         msg = f"MC sent us data '%x'"
-        prlog9(f"{msg}\n",  reg.O)
+        prlog9(f"{msg}\n",  send)
         if check_data:
-            reg.O.expect(dval)
+            send.expect(dval)
             prlog9(f"...yes! passed data check\n")
 
         prlog9(f"still expect ready=1\n")
-        tester.circuit.DataToClient_ready.O.expect(READY)
+        tester.circuit.dtcq_ready.expect(READY)
 
         # reset ready signal i guess
         tester.circuit.send_ready = ~READY
@@ -393,7 +393,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         # addr = 0x88     # Set this to e.g. 87 to make it break below...
         prlog9(f"-----------------------------------------------\n")
         prlog9(f"Check that MC received mem addr '0x{addr:x}'\n")
-        send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg)
+        send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg_out, tester.circuit.mem_addr_reg_CE_out)
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
@@ -405,7 +405,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         # data = 0x1088
         prlog9(f"-----------------------------------------------\n")
         prlog9(f"Send data '0x{data:x}' to MC and verify receipt\n")
-        send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg)
+        send_and_check_dfc_data(data, "mem_data_reg", tester.circuit.mem_data_reg_out, tester.circuit.mem_data_reg_CE_out)
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
@@ -428,7 +428,7 @@ def test_state_machine_fault(base, mixins, graph, params):
 
         prlog9("-----------------------------------------------\n")
         prlog9(f"Send addr '0x{addr:x}' to MC and check receipt\n")
-        send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg)
+        send_and_check_dfc_data(addr, "mem_addr", tester.circuit.mem_addr_reg_out, tester.circuit.mem_addr_reg_CE_out)
 
         ########################################################################
         prlog9("-----------------------------------------------\n")
@@ -537,7 +537,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         # Takes way too long to do all 2K addresses...so...
         # ...just do first four and last four
         def print_region(i):
-            MAX_ADDR = 1 << SRAM_ADDR_WIDTH 
+            MAX_ADDR = 1 << SRAM_ADDR_WIDTH
             return (i <= 0x3) or (i >= (MAX_ADDR-4))
 
         # Write
@@ -564,17 +564,17 @@ def test_state_machine_fault(base, mixins, graph, params):
         if want_redundancy:
             prlog0("Turn on redundancy, remain in state MemOn\n")
             check_transition(Command.RedOn, State.MemOn)
-        
+
             if dbg: prlog0("  - verify redundancy is ON (111...)\n")
             mock_ckt.RCE.expect(RED_ON)
-        
+
         else:
             prlog0("Turn off redundancy, remain in state MemOn\n")
             check_transition(Command.RedOff, State.MemOn)
-        
+
             if dbg: prlog0("  - verify redundancy is OFF (0)\n")
             mock_ckt.RCE.expect(RED_OFF)
-        
+
         if dbg: prlog0("  - and now we should be in state Mem0n\n")
         tester.circuit.current_state.expect(State.MemOn)
 
@@ -596,7 +596,7 @@ def test_state_machine_fault(base, mixins, graph, params):
 
     # Write and read two random locations in the SRAM
     readwrite_check_two_locations()
-    
+
     # Write and read first and last n location of the SRAM
     readwrite_first_and_last()
 
@@ -647,9 +647,9 @@ def test_state_machine_fault(base, mixins, graph, params):
         # read everything back
         # "the top bits should be 0, and the bottom bits should be the top bits"
         # I.e. for 8-bit data with 1 redundant column, should see
-        #     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-        #     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
-        #     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 
+        #     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        #     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        #     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
         #     ...
         #     f, f, f, f, f, f, f, f, f, f, f, f, f, f, f, f
         #
@@ -698,7 +698,7 @@ def test_state_machine_fault(base, mixins, graph, params):
     # magma_opts with "verilator_debug" set to true. This will cause
     # coreir to compile the verilog with the required debug comments.
     #
-    #    tester.compile_and_run("verilator", flags=["-Wno-fatal"], 
+    #    tester.compile_and_run("verilator", flags=["-Wno-fatal"],
     #        magma_opts={"verilator_debug": True}, directory="build")
 
     # For waveforms/gtkw turn on '--trace'
@@ -707,6 +707,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         "verilator",
         flags=["-Wno-fatal"],
         # flags=["-Wno-fatal", "--trace"],
+        magma_output="mlir-verilog",
         magma_opts={"verilator_debug": True},
         directory="build",
     )

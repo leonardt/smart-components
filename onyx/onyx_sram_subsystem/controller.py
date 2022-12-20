@@ -120,4 +120,4 @@ class Controller(m.Generator2):
 
 
 if __name__ == "__main__":
-    m.compile("build/Controller", Controller(2, 32 / 4))
+    m.compile("build/Controller", Controller(2, 32 / 4), inline=True)
