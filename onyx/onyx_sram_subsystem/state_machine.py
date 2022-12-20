@@ -554,6 +554,9 @@ class StateMachine(CoopGenerator):
         # FIXME move this up *before* any usage of self.mem :(
         # Instantiate SRAM using given definition
         self.mem = self.MemDefinition()
+        if hasattr(self.mem, 'current_state'):
+            self.io += m.IO(mem_current_state=m.Out(type(self.mem.current_state)))
+            self.io.mem_current_state @= self.mem.current_state
 
         # Formerly used registers o_reg, r_reg, and s_reg for IO.
         # Now, instead of registers, have ready/valid message
@@ -606,6 +609,7 @@ class StateMachine(CoopGenerator):
         # Init reg allows one-time reg initialization etc.
         init = self.initreg.O
         self.initreg.I @= init
+        self.connect_ds_pg(0, 0)
 
         with m.when(init == m.Bits[1](1)):
             addr_to_mem     @= 13  # changes on read, write request
@@ -652,7 +656,6 @@ class StateMachine(CoopGenerator):
 
         self.mem.WEn @= 0
         self.mem.REn @= 0
-        self.connect_ds_pg(0, 0)
         self.connect_RCE(self.get_redreg_out())
         self.mem_data_reg.CE @= ~ENABLE
         self.DataFromClient.Reg.CE @= ~ENABLE
@@ -809,6 +812,11 @@ class StateMachine(CoopGenerator):
         self.io.dfcq_enable @= dfc.Reg.CE.value()
         self.io.mem_data_reg_CE_out @= self.mem_data_reg.CE.value()
         self.io.mem_addr_reg_CE_out @= self.mem_addr_reg.CE.value()
+        if self.has_redundancy:
+            self.io += m.IO(RCF0A=m.Out(type(self.mem.RCF0A)))
+            self.io.RCF0A @= self.mem.RCF0A.value()
+            self.io += m.IO(RCE=m.Out(m.Bits[self.num_r_cols]))
+            self.io.RCE @= self.mem.RCE.value()
 
 
 

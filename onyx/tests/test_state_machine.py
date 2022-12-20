@@ -358,8 +358,8 @@ def test_state_machine_fault(base, mixins, graph, params):
         tester.circuit.current_state.expect(State.SetMode)
 
         prlog0(f"  - verify SRAM state = {cname}\n")
-        mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
-        mock_ckt.current_state.expect(mstate)
+        # mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
+        tester.circuit.mem_current_state.expect(mstate)
 
         prlog0(f"  - check that MC sent WakeAck data '{want_ack}'\n")
         get_and_check_dtc_data(want_ack)
@@ -566,14 +566,14 @@ def test_state_machine_fault(base, mixins, graph, params):
             check_transition(Command.RedOn, State.MemOn)
 
             if dbg: prlog0("  - verify redundancy is ON (111...)\n")
-            mock_ckt.RCE.expect(RED_ON)
+            tester.circuit.RCE.expect(RED_ON)
 
         else:
             prlog0("Turn off redundancy, remain in state MemOn\n")
             check_transition(Command.RedOff, State.MemOn)
 
             if dbg: prlog0("  - verify redundancy is OFF (0)\n")
-            mock_ckt.RCE.expect(RED_OFF)
+            tester.circuit.RCE.expect(RED_OFF)
 
         if dbg: prlog0("  - and now we should be in state Mem0n\n")
         tester.circuit.current_state.expect(State.MemOn)
@@ -613,7 +613,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         mock_ckt = getattr(tester.circuit, mock_name) # E.g. "tester.circuit.SRAMSM_inst0"
 
         prlog9("Expect RCF0A == 0\n")
-        mock_ckt.RCF0A.expect(0)
+        tester.circuit.RCF0A.expect(0)
 
         ####################################################################
         # enable redundancy on all columns, write zeroes everywhere
@@ -624,7 +624,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         for i in range(N_SRAM_WORDS): write_sram(addr=i, data=0, dbg=DBG9)
 
         prlog9("  - verify redundancy still ON (111...)\n")
-        mock_ckt.RCE.expect(RED_ON)
+        tester.circuit.RCE.expect(RED_ON)
 
 
         ####################################################################
@@ -636,7 +636,7 @@ def test_state_machine_fault(base, mixins, graph, params):
         for i in range(N_SRAM_WORDS): write_sram(addr=i, data=i, dbg=DBG9)
 
         prlog9("  - verify redundancy still OFF (0)\n")
-        mock_ckt.RCE.expect(RED_OFF)
+        tester.circuit.RCE.expect(RED_OFF)
 
 
         ####################################################################
