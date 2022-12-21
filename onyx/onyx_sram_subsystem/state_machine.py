@@ -424,10 +424,13 @@ class StateMachine(CoopGenerator):
 
 
     def got_wake_ack(self, expected_value):
+        # TODO: mlir/verilator precedence issue requires explicit wire
+        result = m.Bit(name="got_wake_ack")
         if self.needs_wake_ack:
-            return (self.mem.wake_ack == expected_value)
+            result @= (self.mem.wake_ack == expected_value)
         else:
-            return (m.Bits[1](1) == m.Bits[1](1))
+            result @= (m.Bits[1](1) == m.Bits[1](1))
+        return result
 
     def __init__(self, MemDefinition, state_machine_graph, **kwargs):
         self.MemDefinition = MemDefinition
